@@ -42,7 +42,23 @@ function Get-StatusDescricao {
 # ============================================================
 #  CONFIGURACAO PERSISTENTE
 # ============================================================
-$script:ConfigPath = Join-Path $PSScriptRoot "MonitorConfig.json"
+$script:BaseDir = if ([string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+    Join-Path $env:LOCALAPPDATA "MonitorDesligamentos"
+} else {
+    $PSScriptRoot
+}
+
+# Garante que a pasta existe
+if (-not (Test-Path $script:BaseDir)) {
+    try {
+        New-Item -ItemType Directory -Path $script:BaseDir -Force | Out-Null
+    } catch {
+        # Se falhar (ex: sem permissao), cai para o TEMP
+        $script:BaseDir = $env:TEMP
+    }
+}
+
+$script:ConfigPath = Join-Path $script:BaseDir "MonitorConfig.json"
 
 function Carregar-Config {
     $default = [PSCustomObject]@{
