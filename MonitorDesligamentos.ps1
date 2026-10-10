@@ -1,6 +1,5 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-Add-Type -AssemblyName System.Windows.Forms.DataVisualization
 
 # ============================================================
 #  DICIONARIO DE STATUS CODES (traducao)
@@ -42,18 +41,18 @@ function Get-StatusDescricao {
 # ============================================================
 #  CONFIGURACAO PERSISTENTE
 # ============================================================
+# Quando rodado via "irm | iex", $PSScriptRoot fica vazio.
+# Nesse caso, usamos uma pasta fixa em %LOCALAPPDATA%.
 $script:BaseDir = if ([string]::IsNullOrWhiteSpace($PSScriptRoot)) {
     Join-Path $env:LOCALAPPDATA "MonitorDesligamentos"
 } else {
     $PSScriptRoot
 }
 
-# Garante que a pasta existe
 if (-not (Test-Path $script:BaseDir)) {
     try {
         New-Item -ItemType Directory -Path $script:BaseDir -Force | Out-Null
     } catch {
-        # Se falhar (ex: sem permissao), cai para o TEMP
         $script:BaseDir = $env:TEMP
     }
 }
@@ -102,6 +101,48 @@ function Habilitar-LogImpressoras {
     catch {
         return $false
     }
+}
+
+# ============================================================
+#  FUNCAO: CRIAR DATAGRIDVIEW PADRAO (responsivo + scroll)
+# ============================================================
+function New-GridPadrao {
+    param(
+        [int]$X, [int]$Y, [int]$W, [int]$H
+    )
+
+    $g = New-Object System.Windows.Forms.DataGridView
+    $g.Location = New-Object System.Drawing.Point($X, $Y)
+    $g.Size = New-Object System.Drawing.Size($W, $H)
+    $g.ReadOnly = $true
+    $g.AllowUserToAddRows = $false
+    $g.AllowUserToDeleteRows = $false
+    $g.AllowUserToResizeRows = $false
+    $g.AllowUserToResizeColumns = $true
+    $g.SelectionMode = "FullRowSelect"
+    $g.MultiSelect = $false
+    $g.AutoSizeColumnsMode = "DisplayedCells"
+    $g.AutoSizeRowsMode = "None"
+    $g.RowHeadersVisible = $false
+    $g.Anchor = "Top,Bottom,Left,Right"
+    $g.BackgroundColor = [System.Drawing.Color]::White
+    $g.BorderStyle = "FixedSingle"
+    $g.EnableHeadersVisualStyles = $false
+    $g.ScrollBars = "Both"
+    $g.ColumnHeadersDefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 48)
+    $g.ColumnHeadersDefaultCellStyle.ForeColor = [System.Drawing.Color]::White
+    $g.ColumnHeadersDefaultCellStyle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+
+    # Ativa DoubleBuffered via reflection (evita flicker e deixa mais suave)
+    try {
+        $prop = [System.Windows.Forms.DataGridView].GetProperty(
+            "DoubleBuffered",
+            [System.Reflection.BindingFlags]::NonPublic -bor [System.Reflection.BindingFlags]::Instance
+        )
+        $prop.SetValue($g, $true, $null)
+    } catch { }
+
+    return $g
 }
 
 # ============================================================
@@ -216,18 +257,13 @@ $btnLimparAlertas.Text = "Limpar Alertas"
 $btnLimparAlertas.Location = New-Object System.Drawing.Point(265, 9)
 $btnLimparAlertas.Size = New-Object System.Drawing.Size(115, 26)
 
-$btnExportar = New-Object System.Windows.Forms.Button
-$btnExportar.Text = "Exportar CSV"
-$btnExportar.Location = New-Object System.Drawing.Point(385, 9)
-$btnExportar.Size = New-Object System.Drawing.Size(115, 26)
-
 $lblIntervalo = New-Object System.Windows.Forms.Label
 $lblIntervalo.Text = "Auto (min):"
-$lblIntervalo.Location = New-Object System.Drawing.Point(515, 12)
+$lblIntervalo.Location = New-Object System.Drawing.Point(395, 12)
 $lblIntervalo.Size = New-Object System.Drawing.Size(70, 20)
 
 $numIntervalo = New-Object System.Windows.Forms.NumericUpDown
-$numIntervalo.Location = New-Object System.Drawing.Point(585, 10)
+$numIntervalo.Location = New-Object System.Drawing.Point(465, 10)
 $numIntervalo.Size = New-Object System.Drawing.Size(55, 24)
 $numIntervalo.Minimum = 1
 $numIntervalo.Maximum = 1440
@@ -235,7 +271,7 @@ $numIntervalo.Value = [int]$script:Config.IntervaloMin
 
 $chkAuto = New-Object System.Windows.Forms.CheckBox
 $chkAuto.Text = "Auto-atualizar"
-$chkAuto.Location = New-Object System.Drawing.Point(650, 12)
+$chkAuto.Location = New-Object System.Drawing.Point(530, 12)
 $chkAuto.Size = New-Object System.Drawing.Size(110, 22)
 $chkAuto.Checked = [bool]$script:Config.AlertaAtivo
 
@@ -276,24 +312,7 @@ $lblResumoDesl.Size = New-Object System.Drawing.Size(980, 20)
 $lblResumoDesl.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $lblResumoDesl.Anchor = "Top,Left,Right"
 
-$gridDesl = New-Object System.Windows.Forms.DataGridView
-$gridDesl.Location = New-Object System.Drawing.Point(10, 50)
-$gridDesl.Size = New-Object System.Drawing.Size(1280, 600)
-$gridDesl.ReadOnly = $true
-$gridDesl.AllowUserToAddRows = $false
-$gridDesl.AllowUserToDeleteRows = $false
-$gridDesl.AllowUserToResizeRows = $false
-$gridDesl.SelectionMode = "FullRowSelect"
-$gridDesl.MultiSelect = $false
-$gridDesl.AutoSizeColumnsMode = "Fill"
-$gridDesl.RowHeadersVisible = $false
-$gridDesl.Anchor = "Top,Bottom,Left,Right"
-$gridDesl.BackgroundColor = [System.Drawing.Color]::White
-$gridDesl.BorderStyle = "FixedSingle"
-$gridDesl.EnableHeadersVisualStyles = $false
-$gridDesl.ColumnHeadersDefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 48)
-$gridDesl.ColumnHeadersDefaultCellStyle.ForeColor = [System.Drawing.Color]::White
-$gridDesl.ColumnHeadersDefaultCellStyle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$gridDesl = New-GridPadrao -X 10 -Y 50 -W 1280 -H 600
 
 $tabDesligamentos.Controls.Add($lblFiltroDesl)
 $tabDesligamentos.Controls.Add($cmbFiltroDesl)
@@ -348,24 +367,7 @@ $lblResumoCred.Size = New-Object System.Drawing.Size(560, 20)
 $lblResumoCred.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $lblResumoCred.Anchor = "Top,Left,Right"
 
-$gridCred = New-Object System.Windows.Forms.DataGridView
-$gridCred.Location = New-Object System.Drawing.Point(10, 50)
-$gridCred.Size = New-Object System.Drawing.Size(1280, 600)
-$gridCred.ReadOnly = $true
-$gridCred.AllowUserToAddRows = $false
-$gridCred.AllowUserToDeleteRows = $false
-$gridCred.AllowUserToResizeRows = $false
-$gridCred.SelectionMode = "FullRowSelect"
-$gridCred.MultiSelect = $false
-$gridCred.AutoSizeColumnsMode = "Fill"
-$gridCred.RowHeadersVisible = $false
-$gridCred.Anchor = "Top,Bottom,Left,Right"
-$gridCred.BackgroundColor = [System.Drawing.Color]::White
-$gridCred.BorderStyle = "FixedSingle"
-$gridCred.EnableHeadersVisualStyles = $false
-$gridCred.ColumnHeadersDefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 48)
-$gridCred.ColumnHeadersDefaultCellStyle.ForeColor = [System.Drawing.Color]::White
-$gridCred.ColumnHeadersDefaultCellStyle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$gridCred = New-GridPadrao -X 10 -Y 50 -W 1280 -H 600
 
 $tabCredenciais.Controls.Add($lblFiltroCred)
 $tabCredenciais.Controls.Add($cmbFiltroCred)
@@ -412,24 +414,7 @@ $lblResumoImp.Size = New-Object System.Drawing.Size(685, 20)
 $lblResumoImp.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $lblResumoImp.Anchor = "Top,Left,Right"
 
-$gridImp = New-Object System.Windows.Forms.DataGridView
-$gridImp.Location = New-Object System.Drawing.Point(10, 50)
-$gridImp.Size = New-Object System.Drawing.Size(1280, 600)
-$gridImp.ReadOnly = $true
-$gridImp.AllowUserToAddRows = $false
-$gridImp.AllowUserToDeleteRows = $false
-$gridImp.AllowUserToResizeRows = $false
-$gridImp.SelectionMode = "FullRowSelect"
-$gridImp.MultiSelect = $false
-$gridImp.AutoSizeColumnsMode = "Fill"
-$gridImp.RowHeadersVisible = $false
-$gridImp.Anchor = "Top,Bottom,Left,Right"
-$gridImp.BackgroundColor = [System.Drawing.Color]::White
-$gridImp.BorderStyle = "FixedSingle"
-$gridImp.EnableHeadersVisualStyles = $false
-$gridImp.ColumnHeadersDefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 48)
-$gridImp.ColumnHeadersDefaultCellStyle.ForeColor = [System.Drawing.Color]::White
-$gridImp.ColumnHeadersDefaultCellStyle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$gridImp = New-GridPadrao -X 10 -Y 50 -W 1280 -H 600
 
 $tabImpressoras.Controls.Add($lblModoImp)
 $tabImpressoras.Controls.Add($cmbModoImp)
@@ -438,43 +423,10 @@ $tabImpressoras.Controls.Add($txtBuscaImp)
 $tabImpressoras.Controls.Add($lblResumoImp)
 $tabImpressoras.Controls.Add($gridImp)
 
-# ============================================================
-#  ABA 4 - RESUMO / GRAFICO
-# ============================================================
-$tabResumo = New-Object System.Windows.Forms.TabPage
-$tabResumo.Text = "Resumo"
-$tabResumo.BackColor = [System.Drawing.Color]::White
-
-$chart = New-Object System.Windows.Forms.DataVisualization.Charting.Chart
-$chart.Location = New-Object System.Drawing.Point(10, 10)
-$chart.Size = New-Object System.Drawing.Size(1280, 640)
-$chart.Anchor = "Top,Bottom,Left,Right"
-[void]$chart.ChartAreas.Add("Main")
-$chart.ChartAreas["Main"].AxisX.Title = "Data"
-$chart.ChartAreas["Main"].AxisY.Title = "Quantidade"
-$chart.ChartAreas["Main"].AxisX.LabelStyle.Angle = -45
-$chart.ChartAreas["Main"].BackColor = [System.Drawing.Color]::WhiteSmoke
-$chart.Titles.Add("Eventos por dia") | Out-Null
-$chart.Titles[0].Font = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
-[void]$chart.Series.Add("Desligamentos")
-$chart.Series["Desligamentos"].ChartType = "Column"
-$chart.Series["Desligamentos"].Color = [System.Drawing.Color]::SteelBlue
-[void]$chart.Series.Add("Credenciais")
-$chart.Series["Credenciais"].ChartType = "Column"
-$chart.Series["Credenciais"].Color = [System.Drawing.Color]::OrangeRed
-[void]$chart.Series.Add("Impressoras")
-$chart.Series["Impressoras"].ChartType = "Column"
-$chart.Series["Impressoras"].Color = [System.Drawing.Color]::MediumSeaGreen
-[void]$chart.Legends.Add("Main")
-$chart.Legends["Main"].Docking = "Top"
-
-$tabResumo.Controls.Add($chart)
-
 # Adiciona abas
 $tabs.Controls.Add($tabDesligamentos)
 $tabs.Controls.Add($tabCredenciais)
 $tabs.Controls.Add($tabImpressoras)
-$tabs.Controls.Add($tabResumo)
 
 # ============================================================
 #  STATUS BAR
@@ -499,7 +451,6 @@ $form.Controls.Add($lblPeriodo)
 $form.Controls.Add($numDias)
 $form.Controls.Add($btnAtualizarTudo)
 $form.Controls.Add($btnLimparAlertas)
-$form.Controls.Add($btnExportar)
 $form.Controls.Add($lblIntervalo)
 $form.Controls.Add($numIntervalo)
 $form.Controls.Add($chkAuto)
@@ -692,13 +643,6 @@ function Aplicar-FiltroDesl {
 
         if ($gridDesl.Columns.Count -gt 0) {
             $gridDesl.Columns["DataHora"].DefaultCellStyle.Format = "dd/MM/yyyy HH:mm:ss"
-            $gridDesl.Columns["DataHora"].FillWeight = 12
-            $gridDesl.Columns["EventoID"].FillWeight = 7
-            $gridDesl.Columns["EventoID"].DefaultCellStyle.Alignment = "MiddleCenter"
-            $gridDesl.Columns["Tipo"].FillWeight = 18
-            $gridDesl.Columns["Fonte"].FillWeight = 18
-            $gridDesl.Columns["Usuario"].FillWeight = 15
-            $gridDesl.Columns["Mensagem"].FillWeight = 30
 
             if ($gridDesl.Columns.Contains("MensagemCompleta")) {
                 $gridDesl.Columns["MensagemCompleta"].Visible = $false
@@ -836,17 +780,6 @@ function Aplicar-FiltroCred {
 
         if ($gridCred.Columns.Count -gt 0) {
             $gridCred.Columns["DataHora"].DefaultCellStyle.Format = "dd/MM/yyyy HH:mm:ss"
-            $gridCred.Columns["DataHora"].FillWeight = 11
-            $gridCred.Columns["EventoID"].FillWeight = 5
-            $gridCred.Columns["EventoID"].DefaultCellStyle.Alignment = "MiddleCenter"
-            $gridCred.Columns["Tipo"].FillWeight = 13
-            $gridCred.Columns["Usuario"].FillWeight = 9
-            $gridCred.Columns["Workstation"].FillWeight = 11
-            $gridCred.Columns["IP"].FillWeight = 9
-            $gridCred.Columns["LogonType"].FillWeight = 5
-            $gridCred.Columns["Status"].FillWeight = 20
-            $gridCred.Columns["Fonte"].FillWeight = 10
-            $gridCred.Columns["Mensagem"].FillWeight = 15
 
             if ($gridCred.Columns.Contains("MensagemCompleta")) {
                 $gridCred.Columns["MensagemCompleta"].Visible = $false
@@ -1018,19 +951,8 @@ function Aplicar-FiltroImp {
         $gridImp.DataSource = $bl
 
         if ($gridImp.Columns.Count -gt 0) {
-
             if ($cmbModoImp.SelectedIndex -eq 0) {
                 $gridImp.Columns["DataHora"].DefaultCellStyle.Format = "dd/MM/yyyy HH:mm:ss"
-                $gridImp.Columns["DataHora"].FillWeight = 13
-                $gridImp.Columns["EventoID"].FillWeight = 6
-                $gridImp.Columns["EventoID"].DefaultCellStyle.Alignment = "MiddleCenter"
-                $gridImp.Columns["Tipo"].FillWeight = 15
-                $gridImp.Columns["Impressora"].FillWeight = 15
-                $gridImp.Columns["Porta"].FillWeight = 12
-                $gridImp.Columns["Documento"].FillWeight = 12
-                $gridImp.Columns["Usuario"].FillWeight = 10
-                $gridImp.Columns["Tamanho"].FillWeight = 7
-                $gridImp.Columns["Fonte"].FillWeight = 10
 
                 if ($gridImp.Columns.Contains("Mensagem")) {
                     $gridImp.Columns["Mensagem"].Visible = $false
@@ -1038,16 +960,6 @@ function Aplicar-FiltroImp {
                 if ($gridImp.Columns.Contains("MensagemCompleta")) {
                     $gridImp.Columns["MensagemCompleta"].Visible = $false
                 }
-            }
-            else {
-                $gridImp.Columns["Nome"].FillWeight = 25
-                $gridImp.Columns["Status"].FillWeight = 12
-                $gridImp.Columns["Porta"].FillWeight = 15
-                $gridImp.Columns["Driver"].FillWeight = 18
-                $gridImp.Columns["Compartilhada"].FillWeight = 8
-                $gridImp.Columns["JobsAtivos"].FillWeight = 8
-                $gridImp.Columns["JobsComErro"].FillWeight = 8
-                $gridImp.Columns["Local"].FillWeight = 16
             }
         }
     }
@@ -1102,43 +1014,6 @@ function Detectar-PadraoFalhas {
                 $notify.ShowBalloonTip(8000)
                 return
             }
-        }
-    }
-}
-
-# ============================================================
-#  ABA 4: ATUALIZAR GRAFICO
-# ============================================================
-function Atualizar-Grafico {
-
-    $chart.Series["Desligamentos"].Points.Clear()
-    $chart.Series["Credenciais"].Points.Clear()
-    $chart.Series["Impressoras"].Points.Clear()
-
-    if ($script:DadosDeslFiltrados.Count -gt 0) {
-        $porDia = $script:DadosDeslFiltrados |
-                  Group-Object { $_.DataHora.ToString("dd/MM/yyyy") } |
-                  Sort-Object Name
-        foreach ($g in $porDia) {
-            [void]$chart.Series["Desligamentos"].Points.AddXY($g.Name, $g.Count)
-        }
-    }
-
-    if ($script:DadosCredFiltrados.Count -gt 0) {
-        $porDia = $script:DadosCredFiltrados |
-                  Group-Object { $_.DataHora.ToString("dd/MM/yyyy") } |
-                  Sort-Object Name
-        foreach ($g in $porDia) {
-            [void]$chart.Series["Credenciais"].Points.AddXY($g.Name, $g.Count)
-        }
-    }
-
-    if ($cmbModoImp.SelectedIndex -eq 0 -and $script:DadosImpFiltrados.Count -gt 0) {
-        $porDia = $script:DadosImpFiltrados |
-                  Group-Object { $_.DataHora.ToString("dd/MM/yyyy") } |
-                  Sort-Object Name
-        foreach ($g in $porDia) {
-            [void]$chart.Series["Impressoras"].Points.AddXY($g.Name, $g.Count)
         }
     }
 }
@@ -1239,7 +1114,6 @@ $btnAtualizarTudo.Add_Click({
         0 { Carregar-Desligamentos }
         1 { Carregar-Credenciais }
         2 { Carregar-Impressoras }
-        3 { Atualizar-Grafico }
     }
     $script:UltimoCheck = Get-Date
 })
@@ -1262,68 +1136,6 @@ $btnLimparAlertas.Add_Click({
 
     $gridCred.Refresh()
     $statusLabel.Text = "Alertas limpos."
-})
-
-$btnExportar.Add_Click({
-
-    if ($tabs.SelectedIndex -eq 0) {
-        $dadosExp = $script:DadosDeslFiltrados
-        $sufixo = "Desligamentos"
-    }
-    elseif ($tabs.SelectedIndex -eq 1) {
-        $dadosExp = $script:DadosCredFiltrados
-        $sufixo = "Credenciais"
-    }
-    elseif ($tabs.SelectedIndex -eq 2) {
-        $dadosExp = $script:DadosImpFiltrados
-        $sufixo = "Impressoras"
-    }
-    else {
-        [System.Windows.Forms.MessageBox]::Show(
-            "Selecione uma aba com dados para exportar.",
-            "Exportar CSV",
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Information
-        ) | Out-Null
-        return
-    }
-
-    if ($dadosExp.Count -eq 0) {
-        [System.Windows.Forms.MessageBox]::Show(
-            "Nao ha dados para exportar.",
-            "Exportar CSV",
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Information
-        ) | Out-Null
-        return
-    }
-
-    try {
-        $arquivo = Join-Path `
-            ([Environment]::GetFolderPath("Desktop")) `
-            ("${sufixo}_" + (Get-Date -Format "yyyyMMdd_HHmmss") + ".csv")
-
-        $dadosExp |
-            Select-Object * -ExcludeProperty MensagemCompleta |
-            Export-Csv -Path $arquivo -NoTypeInformation -Encoding UTF8
-
-        [System.Windows.Forms.MessageBox]::Show(
-            "Arquivo salvo em:`r`n$arquivo",
-            "Exportacao Concluida",
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Information
-        ) | Out-Null
-
-        $statusLabel.Text = "Exportado para: $arquivo"
-    }
-    catch {
-        [System.Windows.Forms.MessageBox]::Show(
-            $_.Exception.Message,
-            "Erro ao Exportar",
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Error
-        ) | Out-Null
-    }
 })
 
 $cmbFiltroDesl.Add_SelectedIndexChanged({
@@ -1380,10 +1192,6 @@ $chkAuto.Add_CheckedChanged({
         $timer.Stop()
         $statusLabel.Text = "Auto-atualizacao desativada."
     }
-})
-
-$tabs.Add_SelectedIndexChanged({
-    if ($tabs.SelectedIndex -eq 3) { Atualizar-Grafico }
 })
 
 # ============================================================
@@ -1486,7 +1294,6 @@ $timer.Add_Tick({
         0 { Carregar-Desligamentos }
         1 { Carregar-Credenciais }
         2 { Carregar-Impressoras }
-        3 { Atualizar-Grafico }
     }
     $script:UltimoCheck = Get-Date
 })
