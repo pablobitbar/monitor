@@ -91,7 +91,6 @@ function Garantir-PdfPig {
     $dllCore      = Join-Path $libDir "UglyToad.PdfPig.Core.dll"
     $dllFonts     = Join-Path $libDir "UglyToad.PdfPig.Fonts.dll"
 
-    # Se ja temos as 3 DLLs, carrega
     if ((Test-Path $dllPrincipal) -and (Test-Path $dllCore) -and (Test-Path $dllFonts)) {
         try {
             Add-Type -Path $dllCore -ErrorAction Stop
@@ -106,7 +105,6 @@ function Garantir-PdfPig {
         }
     }
 
-    # Versao 0.1.8 - ultima com netstandard2.0 (compativel com PS 5.1)
     $urls = @(
         "https://www.nuget.org/api/v2/package/PdfPig/0.1.8",
         "https://globalcdn.nuget.org/packages/pdfpig.0.1.8.nupkg"
@@ -146,7 +144,6 @@ function Garantir-PdfPig {
         return $null
     }
 
-    # Extrai
     try {
         $extractDir = Join-Path $libDir "pdfpig_extract"
         if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue }
@@ -156,7 +153,6 @@ function Garantir-PdfPig {
         Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
         Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
 
-        # Pasta netstandard2.0
         $pastaAlvo = Get-ChildItem -Path $extractDir -Recurse -Directory |
             Where-Object { $_.Name -eq "netstandard2.0" } |
             Select-Object -First 1
@@ -167,9 +163,7 @@ function Garantir-PdfPig {
                 Select-Object -First 1
         }
 
-        if (-not $pastaAlvo) {
-            throw "Nao encontrei a pasta de DLLs no pacote"
-        }
+        if (-not $pastaAlvo) { throw "Nao encontrei a pasta de DLLs no pacote" }
 
         $dlls = Get-ChildItem -Path $pastaAlvo.FullName -Filter "*.dll"
         foreach ($dll in $dlls) {
@@ -205,7 +199,9 @@ function Garantir-PdfPig {
 # ============================================================
 $script:SecoesConhecidas = @(
     "Abertura","Fechamento","Clientes","Fiscal","Receive",
-    "Sincronizacao","Editando","Sangria","Suprimento"
+    "Sincronizacao","Editando","Sangria","Suprimento",
+    "Itens","Libera Cartao/Mesa","Pagamento","Bloqueio",
+    "Inserindo","Libera","Transferencias","Transf. Prod"
 )
 
 function Extrair-TextoPdfPig {
@@ -249,34 +245,35 @@ function Parse-LogBitBar {
     $registros = New-Object System.Collections.ArrayList
     if ([string]::IsNullOrWhiteSpace($TextoCompleto)) { return $registros }
 
-    # O texto do PdfPig pode vir sem quebras de linha entre as colunas/registros.
-    # Insere uma quebra antes de cada registro reconhecível (usuario + tipo + computador + hora).
-    $tipos = 'Geral|Inserindo|Editando|Libera|Fiscal|Receive|Sincronizacao|Abertura|Fechamento|Clientes|Itens|Bloqueio|Pagamento'
+    # Mantem a estrategia da versao funcional: separar registros pelo padrao
+    # reconhecivel, sem exigir data ou milissegundos em todos os eventos.
+    $tipos = 'Geral|Inserindo|Editando|Libera|Fiscal|Receive|Sincronizacao|Abertura|Fechamento|Clientes|Itens|Bloqueio|Pagamento|Transf\.\s*Prod'
     $inicioRegistro = '(?=[\p{L}][\p{L}\p{N}._'' -]*?(?:' + $tipos + ')[\p{L}\p{N}._-]*\d{2}:\d{2}:\d{2}(?:\.\d+)?)'
     $textoNormalizado = [regex]::Replace($TextoCompleto, $inicioRegistro, "`n")
 
-    # Cabeçalhos de seção também podem estar grudados no registro anterior.
+    # Cabeçalhos de seção também podem estar colados ao registro anterior.
     $textoNormalizado = [regex]::Replace(
         $textoNormalizado,
-        '(?=(?:Abertura|Fechamento|Clientes|Fiscal|Receive|Sincronizacao|Editando|Sangria|Suprimento|Itens|Libera Cartao/Mesa)UsuárioTipoComputadorDescriçãoHora)',
+        '(?=(?:Abertura|Fechamento|Clientes|Fiscal|Receive|Sincronizacao|Editando|Sangria|Suprimento|Itens|Libera Cartao/Mesa|Transferencias|Transf\.\s*Prod)UsuárioTipoComputadorDescriçãoHora)',
         "`n"
     )
 
     $linhas = $textoNormalizado -split "`r?`n"
     $secaoAtual = "Geral"
 
-    $regexColado = [regex]'^(?:(?<data>\d{2}/\d{2}/\d{4}))?(?<usuario>[\p{L}][\p{L}\p{N}._'' -]*?)(?<tipo>Geral|Inserindo|Editando|Libera|Fiscal|Receive|Sincronizacao|Abertura|Fechamento|Clientes|Itens|Bloqueio|Pagamento)(?<comp>[\p{L}\p{N}._-]*?)(?<hora>\d{2}:\d{2}:\d{2}(?:\.\d+)?)(?<desc>.*)$'
+    # Regex da versão que funcionava: aceita data opcional e horário com ou sem milissegundos.
+    $regexColado = [regex]'^(?:(?<data>\d{2}/\d{2}/\d{4}))?(?<usuario>[\p{L}][\p{L}\p{N}._'' -]*?)(?<tipo>Geral|Inserindo|Editando|Libera|Fiscal|Receive|Sincronizacao|Abertura|Fechamento|Clientes|Itens|Bloqueio|Pagamento|Transf\.\s*Prod)(?<comp>[\p{L}\p{N}._-]*?)(?<hora>\d{2}:\d{2}:\d{2}(?:\.\d+)?)(?<desc>.*)$'
     $regexComEspacos = [regex]'^(?:(?<data>\d{2}/\d{2}/\d{4})\s*)?(?<usuario>[\p{L}][\p{L}\p{N}._'' -]*?)\s+(?<tipo>[\p{L}]+)\s+(?<comp>[\p{L}\p{N}._-]+)?\s*(?<hora>\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s*(?<desc>.*)$'
 
     foreach ($linhaBruta in $linhas) {
         $linha = $linhaBruta.Trim()
         if (-not $linha) { continue }
 
-        if ($linha -match '^(Abertura|Fechamento|Clientes|Fiscal|Itens|Receive|Sincronizacao|Sangria|Suprimento|Libera Cartao/Mesa)$') {
+        if ($linha -match '^(Abertura|Fechamento|Clientes|Fiscal|Itens|Receive|Sincronizacao|Sangria|Suprimento|Libera Cartao/Mesa|Transferencias|Transf\.\s*Prod)$') {
             $secaoAtual = $Matches[1]
             continue
         }
-        if ($linha -match '^(UsuárioTipoComputadorDescriçãoHora|Usu.rioTipoComputadorDescri..oHora|Página:|Log de Alterações)') { continue }
+        if ($linha -match '^(UsuárioTipoComputadorDescriçãoHora|Usu.rioTipoComputadorDescri..oHora|Página:|Log de Alterações|www\.bitbar\.com\.br)') { continue }
 
         $m = $regexColado.Match($linha)
         if (-not $m.Success) { $m = $regexComEspacos.Match($linha) }
@@ -285,12 +282,30 @@ function Parse-LogBitBar {
         $data = $m.Groups['data'].Value
         $hora = $m.Groups['hora'].Value
         $user = $m.Groups['usuario'].Value.Trim()
-        $tipo = $m.Groups['tipo'].Value
+        $tipo = $m.Groups['tipo'].Value.Trim()
         $comp = $m.Groups['comp'].Value
         $desc = $m.Groups['desc'].Value.Trim()
 
-        # Evita interpretar cabeçalhos/ruído como evento.
         if ([string]::IsNullOrWhiteSpace($user) -or [string]::IsNullOrWhiteSpace($hora)) { continue }
+
+        # Extrai mesa/comanda para alimentar o filtro avançado sem alterar a descrição original.
+        $mesaComanda = ""
+        $mMesa = [regex]::Match($desc, '"nro_mesa"\s*:\s*"([^"]*)"')
+        if ($mMesa.Success -and $mMesa.Groups[1].Value.Trim() -ne "") {
+            $mesaComanda = $mMesa.Groups[1].Value.Trim()
+        }
+        if (-not $mesaComanda) {
+            $mComanda = [regex]::Match($desc, '"comandas"\s*:\s*\[([^\]]+)\]')
+            if ($mComanda.Success) { $mesaComanda = $mComanda.Groups[1].Value.Trim() }
+        }
+        if (-not $mesaComanda) {
+            $mComanda2 = [regex]::Match($desc, 'comandas?"?\s*:?\s*\[?(\d+)')
+            if ($mComanda2.Success) { $mesaComanda = $mComanda2.Groups[1].Value }
+        }
+        if (-not $mesaComanda) {
+            $mMesa2 = [regex]::Match($desc, 'mesa\s+(\d+)')
+            if ($mMesa2.Success) { $mesaComanda = $mMesa2.Groups[1].Value }
+        }
 
         $jsonPayload = $null
         $jsonMatch = [regex]::Match($desc, '\{.*\}')
@@ -299,19 +314,43 @@ function Parse-LogBitBar {
         }
 
         [void]$registros.Add([PSCustomObject]@{
-            Secao = $secaoAtual
-            Data = $data
-            Hora = $hora
-            DataHora = if ($data) { "$data $hora" } else { $hora }
-            Usuario = $user
-            Computador = $comp
-            Tipo = $tipo
-            Descricao = $desc
-            Payload = $jsonPayload
+            Secao       = $secaoAtual
+            Data        = $data
+            Hora        = $hora
+            DataHora    = if ($data) { "$data $hora" } else { $hora }
+            Usuario     = $user
+            Computador  = $comp
+            Tipo        = $tipo
+            MesaComanda = $mesaComanda
+            Descricao   = $desc
+            Payload     = $jsonPayload
         })
     }
 
     return $registros
+}
+
+# ============================================================
+#  FUNCOES AUXILIARES DE CLASSIFICACAO (ERRO / SUCESSO)
+# ============================================================
+function Test-ErroLog {
+    param([string]$Descricao)
+    if ([string]::IsNullOrWhiteSpace($Descricao)) { return $false }
+    return ($Descricao -match '"sucesso"\s*:\s*false' -or
+            $Descricao -match '"codigo_erro"\s*:\s*[1-9]' -or
+            $Descricao -match '"erro"\s*:' -or
+            $Descricao -match 'n\p{L}o encontrado' -or
+            $Descricao -match 'bloqueado' -or
+            $Descricao -match 'ultrapassou o limite' -or
+            $Descricao -match 'ERRO:' -or
+            $Descricao -match 'n\p{L}o existe')
+}
+
+function Test-SucessoLog {
+    param([string]$Descricao)
+    if ([string]::IsNullOrWhiteSpace($Descricao)) { return $false }
+    return ($Descricao -match '"sucesso"\s*:\s*true' -or
+            $Descricao -match '"codigo_erro"\s*:\s*0')
 }
 
 # ============================================================
@@ -595,7 +634,7 @@ $tabImpressoras.Controls.Add($lblResumoImp)
 $tabImpressoras.Controls.Add($gridImp)
 
 # ============================================================
-#  ABA 4 - LOG DO SISTEMA (BITBAR)
+#  ABA 4 - LOG DO SISTEMA (BITBAR) - COM FILTROS AVANCADOS
 # ============================================================
 $tabLogSistema = New-Object System.Windows.Forms.TabPage
 $tabLogSistema.Text = "Log do Sistema"
@@ -622,27 +661,119 @@ $txtFiltroLog.Location = New-Object System.Drawing.Point(755, 12)
 $txtFiltroLog.Size = New-Object System.Drawing.Size(180, 24)
 $txtFiltroLog.Text = ""
 
-$gridSecoes = New-GridPadrao -X 10 -Y 50 -W 1280 -H 180
+$btnLimparFiltrosLog = New-Object System.Windows.Forms.Button
+$btnLimparFiltrosLog.Text = "Limpar Filtros"
+$btnLimparFiltrosLog.Location = New-Object System.Drawing.Point(945, 11)
+$btnLimparFiltrosLog.Size = New-Object System.Drawing.Size(115, 26)
+
+$lblHoraDe = New-Object System.Windows.Forms.Label
+$lblHoraDe.Text = "Hora de:"
+$lblHoraDe.Location = New-Object System.Drawing.Point(10, 45)
+$lblHoraDe.Size = New-Object System.Drawing.Size(55, 20)
+
+$txtHoraDe = New-Object System.Windows.Forms.TextBox
+$txtHoraDe.Location = New-Object System.Drawing.Point(70, 43)
+$txtHoraDe.Size = New-Object System.Drawing.Size(70, 24)
+$txtHoraDe.Text = "00:00"
+
+$lblHoraAte = New-Object System.Windows.Forms.Label
+$lblHoraAte.Text = "ate:"
+$lblHoraAte.Location = New-Object System.Drawing.Point(145, 45)
+$lblHoraAte.Size = New-Object System.Drawing.Size(28, 20)
+
+$txtHoraAte = New-Object System.Windows.Forms.TextBox
+$txtHoraAte.Location = New-Object System.Drawing.Point(175, 43)
+$txtHoraAte.Size = New-Object System.Drawing.Size(70, 24)
+$txtHoraAte.Text = "23:59"
+
+$lblMesa = New-Object System.Windows.Forms.Label
+$lblMesa.Text = "Mesa/Comanda:"
+$lblMesa.Location = New-Object System.Drawing.Point(260, 45)
+$lblMesa.Size = New-Object System.Drawing.Size(95, 20)
+
+$txtMesa = New-Object System.Windows.Forms.TextBox
+$txtMesa.Location = New-Object System.Drawing.Point(358, 43)
+$txtMesa.Size = New-Object System.Drawing.Size(100, 24)
+$txtMesa.Text = ""
+
+$lblUsuarioLog = New-Object System.Windows.Forms.Label
+$lblUsuarioLog.Text = "Usuario:"
+$lblUsuarioLog.Location = New-Object System.Drawing.Point(470, 45)
+$lblUsuarioLog.Size = New-Object System.Drawing.Size(55, 20)
+
+$txtUsuarioLog = New-Object System.Windows.Forms.TextBox
+$txtUsuarioLog.Location = New-Object System.Drawing.Point(528, 43)
+$txtUsuarioLog.Size = New-Object System.Drawing.Size(120, 24)
+
+$lblTipoLog = New-Object System.Windows.Forms.Label
+$lblTipoLog.Text = "Tipo:"
+$lblTipoLog.Location = New-Object System.Drawing.Point(660, 45)
+$lblTipoLog.Size = New-Object System.Drawing.Size(35, 20)
+
+$cmbTipoLog = New-Object System.Windows.Forms.ComboBox
+$cmbTipoLog.Location = New-Object System.Drawing.Point(698, 43)
+$cmbTipoLog.Size = New-Object System.Drawing.Size(140, 24)
+$cmbTipoLog.DropDownStyle = "DropDown"
+[void]$cmbTipoLog.Items.Add("(todos)")
+[void]$cmbTipoLog.Items.Add("Inserindo")
+[void]$cmbTipoLog.Items.Add("Editando")
+[void]$cmbTipoLog.Items.Add("Fiscal")
+[void]$cmbTipoLog.Items.Add("Receive")
+[void]$cmbTipoLog.Items.Add("Geral")
+[void]$cmbTipoLog.Items.Add("Transf. Prod")
+$cmbTipoLog.SelectedIndex = 0
+
+$chkSomenteErros = New-Object System.Windows.Forms.CheckBox
+$chkSomenteErros.Text = "Somente erros"
+$chkSomenteErros.Location = New-Object System.Drawing.Point(848, 45)
+$chkSomenteErros.Size = New-Object System.Drawing.Size(115, 22)
+$chkSomenteErros.ForeColor = [System.Drawing.Color]::DarkRed
+
+$chkSomenteSucesso = New-Object System.Windows.Forms.CheckBox
+$chkSomenteSucesso.Text = "Somente sucesso"
+$chkSomenteSucesso.Location = New-Object System.Drawing.Point(968, 45)
+$chkSomenteSucesso.Size = New-Object System.Drawing.Size(125, 22)
+$chkSomenteSucesso.ForeColor = [System.Drawing.Color]::DarkGreen
+
+$lblResumoLog = New-Object System.Windows.Forms.Label
+$lblResumoLog.Location = New-Object System.Drawing.Point(1095, 47)
+$lblResumoLog.Size = New-Object System.Drawing.Size(195, 20)
+$lblResumoLog.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+
+$gridSecoes = New-GridPadrao -X 10 -Y 80 -W 1280 -H 160
 $gridSecoes.Anchor = "Top,Left,Right"
 
-$gridRegistros = New-GridPadrao -X 10 -Y 245 -W 1280 -H 455
-
 $lblRegistros = New-Object System.Windows.Forms.Label
-$lblRegistros.Text = "Registros da sessao selecionada (duplo clique abre o JSON):"
-$lblRegistros.Location = New-Object System.Drawing.Point(10, 225)
-$lblRegistros.Size = New-Object System.Drawing.Size(500, 18)
+$lblRegistros.Text = "Registros (duplo clique abre o JSON). Filtros aplicados em tempo real:"
+$lblRegistros.Location = New-Object System.Drawing.Point(10, 245)
+$lblRegistros.Size = New-Object System.Drawing.Size(700, 18)
 $lblRegistros.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Italic)
 $lblRegistros.ForeColor = [System.Drawing.Color]::DimGray
+
+$gridRegistros = New-GridPadrao -X 10 -Y 265 -W 1280 -H 435
 
 $tabLogSistema.Controls.Add($btnAbrirPdf)
 $tabLogSistema.Controls.Add($lblArquivo)
 $tabLogSistema.Controls.Add($lblFiltroLog)
 $tabLogSistema.Controls.Add($txtFiltroLog)
+$tabLogSistema.Controls.Add($btnLimparFiltrosLog)
+$tabLogSistema.Controls.Add($lblHoraDe)
+$tabLogSistema.Controls.Add($txtHoraDe)
+$tabLogSistema.Controls.Add($lblHoraAte)
+$tabLogSistema.Controls.Add($txtHoraAte)
+$tabLogSistema.Controls.Add($lblMesa)
+$tabLogSistema.Controls.Add($txtMesa)
+$tabLogSistema.Controls.Add($lblUsuarioLog)
+$tabLogSistema.Controls.Add($txtUsuarioLog)
+$tabLogSistema.Controls.Add($lblTipoLog)
+$tabLogSistema.Controls.Add($cmbTipoLog)
+$tabLogSistema.Controls.Add($chkSomenteErros)
+$tabLogSistema.Controls.Add($chkSomenteSucesso)
+$tabLogSistema.Controls.Add($lblResumoLog)
 $tabLogSistema.Controls.Add($gridSecoes)
 $tabLogSistema.Controls.Add($lblRegistros)
 $tabLogSistema.Controls.Add($gridRegistros)
 
-# Adiciona abas
 $tabs.Controls.Add($tabDesligamentos)
 $tabs.Controls.Add($tabCredenciais)
 $tabs.Controls.Add($tabImpressoras)
@@ -680,6 +811,7 @@ $script:DadosImpBrutos = @()
 $script:DadosImpFiltrados = @()
 $script:LogRegistros = @()
 $script:LogSecoes = @()
+$script:DadosLogFiltrados = @()
 $script:SecaoSelecionada = ""
 $script:UltimoErroPdf = ""
 
@@ -746,7 +878,7 @@ function Get-CampoEventoImpressora {
 }
 
 # ============================================================
-#  CARREGADORES
+#  CARREGADORES - DESLIGAMENTOS
 # ============================================================
 function Carregar-Desligamentos {
     $statusLabel.Text = "Consultando eventos de desligamento..."
@@ -799,6 +931,9 @@ function Aplicar-FiltroDesl {
     $lblResumoDesl.Text = "Kernel-Power: $q41 | 6008: $q6008 | BSOD: $q1001 | Planejados: $q1074 | Total: $($script:DadosDeslFiltrados.Count)"
 }
 
+# ============================================================
+#  CARREGADORES - CREDENCIAIS
+# ============================================================
 function Carregar-Credenciais {
     $statusLabel.Text = "Consultando eventos de credenciais..."
     $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
@@ -875,6 +1010,9 @@ function Aplicar-FiltroCred {
     $lblResumoCred.Text = "Falhas: $q4625 | NTLM: $q4776 | Bloqueadas: $q4740 | Total: $($script:DadosCredFiltrados.Count)"
 }
 
+# ============================================================
+#  CARREGADORES - IMPRESSORAS
+# ============================================================
 function Carregar-Impressoras {
     $statusLabel.Text = "Consultando impressoras..."
     $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
@@ -1019,35 +1157,82 @@ function Atualizar-GridSecoes {
             $gridSecoes.Columns["HoraFinal"].FillWeight = 20
         }
     }
-    $gridRegistros.DataSource = $null
-    $script:SecaoSelecionada = ""
 }
 
 function Atualizar-GridRegistros {
     param([string]$Secao)
-    $script:SecaoSelecionada = $Secao
-    $dados = $script:LogRegistros | Where-Object { $_.Secao -eq $Secao }
+
+    $dados = $script:LogRegistros
+    if (-not [string]::IsNullOrWhiteSpace($Secao) -and $Secao -ne "(todas)") {
+        $dados = $dados | Where-Object { $_.Secao -eq $Secao }
+    }
+
+    $hDe  = $txtHoraDe.Text.Trim()
+    $hAte = $txtHoraAte.Text.Trim()
+    if ($hDe -match '^\d{1,2}:\d{2}') {
+        $hDe = $hDe.PadLeft(5,'0')
+        $dados = $dados | Where-Object { $_.Hora.Substring(0,5) -ge $hDe }
+    }
+    if ($hAte -match '^\d{1,2}:\d{2}') {
+        $hAte = $hAte.PadLeft(5,'0')
+        $dados = $dados | Where-Object { $_.Hora.Substring(0,5) -le $hAte }
+    }
+
+    $mesa = $txtMesa.Text.Trim()
+    if ($mesa -ne "") {
+        $dados = $dados | Where-Object {
+            $_.MesaComanda -match [regex]::Escape($mesa) -or
+            $_.Descricao   -match [regex]::Escape($mesa)
+        }
+    }
+
+    $user = $txtUsuarioLog.Text.Trim()
+    if ($user -ne "") {
+        $dados = $dados | Where-Object { $_.Usuario -like "*$user*" }
+    }
+
+    if ($cmbTipoLog.SelectedIndex -gt 0) {
+        $tipoSel = "$($cmbTipoLog.SelectedItem)"
+        $dados = $dados | Where-Object { $_.Tipo -eq $tipoSel }
+    }
+
+    if ($chkSomenteErros.Checked) {
+        $dados = $dados | Where-Object { Test-ErroLog $_.Descricao }
+    }
+    elseif ($chkSomenteSucesso.Checked) {
+        $dados = $dados | Where-Object { Test-SucessoLog $_.Descricao }
+    }
+
+    $script:DadosLogFiltrados = @($dados)
 
     $gridRegistros.DataSource = $null
-    if (@($dados).Count -gt 0) {
+    if ($script:DadosLogFiltrados.Count -gt 0) {
         $bl = New-Object System.ComponentModel.BindingList[object]
-        foreach ($i in $dados) { $bl.Add($i) | Out-Null }
+        foreach ($i in $script:DadosLogFiltrados) { $bl.Add($i) | Out-Null }
         $gridRegistros.DataSource = $bl
 
         if ($gridRegistros.Columns.Count -gt 0) {
             $gridRegistros.Columns["Secao"].Visible = $false
             $gridRegistros.Columns["Data"].Visible = $false
-            $gridRegistros.Columns["Hora"].FillWeight = 12
-            $gridRegistros.Columns["Usuario"].FillWeight = 12
+            $gridRegistros.Columns["Hora"].FillWeight = 10
+            $gridRegistros.Columns["Usuario"].FillWeight = 10
             $gridRegistros.Columns["Computador"].FillWeight = 12
-            $gridRegistros.Columns["Tipo"].FillWeight = 15
-            $gridRegistros.Columns["Descricao"].FillWeight = 49
+            $gridRegistros.Columns["Tipo"].FillWeight = 10
+            if ($gridRegistros.Columns.Contains("MesaComanda")) {
+                $gridRegistros.Columns["MesaComanda"].FillWeight = 10
+                $gridRegistros.Columns["MesaComanda"].HeaderText = "Mesa/Comanda"
+            }
+            $gridRegistros.Columns["Descricao"].FillWeight = 48
             if ($gridRegistros.Columns.Contains("Payload")) {
                 $gridRegistros.Columns["Payload"].Visible = $false
             }
         }
     }
-    $statusLabel.Text = "Sessao '$Secao': $(@($dados).Count) registros."
+
+    $qErros = @($script:DadosLogFiltrados | Where-Object { Test-ErroLog   $_.Descricao }).Count
+    $qOk    = @($script:DadosLogFiltrados | Where-Object { Test-SucessoLog $_.Descricao }).Count
+    $lblResumoLog.Text = "Total: $($script:DadosLogFiltrados.Count) | Erros: $qErros | OK: $qOk"
+    $statusLabel.Text = "Registros: $($script:DadosLogFiltrados.Count)"
 }
 
 # ============================================================
@@ -1120,11 +1305,11 @@ $gridRegistros.add_CellFormatting({
     $desc = $r.Cells["Descricao"].Value
     if ($desc) {
         $descStr = "$desc"
-        if ($descStr -match '"sucesso"\s*:\s*false' -or $descStr -match '"codigo_erro"\s*:\s*[1-9]' -or $descStr -match 'bloqueado' -or $descStr -match 'não existe') {
+        if (Test-ErroLog $descStr) {
             $e.CellStyle.BackColor = [System.Drawing.Color]::LightCoral
             $e.CellStyle.ForeColor = [System.Drawing.Color]::DarkRed
         }
-        elseif ($descStr -match '"sucesso"\s*:\s*true') {
+        elseif (Test-SucessoLog $descStr) {
             $e.CellStyle.BackColor = [System.Drawing.Color]::Honeydew
         }
     }
@@ -1220,14 +1405,10 @@ $btnAbrirPdf.Add_Click({
         return
     }
 
-    # ============================================================
-    #  DIAGNOSTICO - mostra o texto bruto extraido
-    # ============================================================
     $script:TextoBrutoPdf = $texto
     $linhasBrutas = ($texto -split "`r?`n") | Where-Object { $_.Trim() -ne "" }
     $totalLinhas = @($linhasBrutas).Count
 
-    # Preview: primeiras 40 linhas nao vazias
     $preview = ($linhasBrutas | Select-Object -First 40) -join "`r`n"
     $msgDiag = @"
 Texto extraido: $($texto.Length) caracteres
@@ -1240,7 +1421,6 @@ PREVIEW DAS PRIMEIRAS 40 LINHAS NAO VAZIAS:
 $preview
 "@
 
-    # Popup de diagnostico com botao para copiar tudo
     $diagForm = New-Object System.Windows.Forms.Form
     $diagForm.Text = "Diagnostico - Texto extraido do PDF"
     $diagForm.Size = New-Object System.Drawing.Size(1000, 700)
@@ -1266,7 +1446,7 @@ $preview
     $btnCopiarTudo.Size = New-Object System.Drawing.Size(160, 30)
     $btnCopiarTudo.Add_Click({
         [System.Windows.Forms.Clipboard]::SetText($script:TextoBrutoPdf)
-        [System.Windows.Forms.MessageBox]::Show("Texto completo copiado para a area de transferencia.`r`n`r`nCole aqui no chat para eu ajustar o parser.","Copiado") | Out-Null
+        [System.Windows.Forms.MessageBox]::Show("Texto completo copiado para a area de transferencia.`r`n`r`n","Copiado") | Out-Null
     })
 
     $btnCopiarPreview = New-Object System.Windows.Forms.Button
@@ -1279,7 +1459,7 @@ $preview
     })
 
     $btnFecharDiag = New-Object System.Windows.Forms.Button
-    $btnFecharDiag.Text = "Fechar e parsear"
+    $btnFecharDiag.Text = "Visualizar"
     $btnFecharDiag.Location = New-Object System.Drawing.Point(320, 8)
     $btnFecharDiag.Size = New-Object System.Drawing.Size(140, 30)
     $btnFecharDiag.Add_Click({ $diagForm.Close() })
@@ -1294,18 +1474,16 @@ $preview
     [void]$diagForm.ShowDialog()
     $diagForm.Dispose()
 
-    # ============================================================
-    #  Segue com o parser normal
-    # ============================================================
     $statusLabel.Text = "Parseando registros..."
     $form.Refresh()
 
     $script:LogRegistros = Parse-LogBitBar -TextoCompleto $texto
     Atualizar-GridSecoes
+    Atualizar-GridRegistros -Secao "(todas)"
 
     if ($script:LogRegistros.Count -eq 0) {
         [System.Windows.Forms.MessageBox]::Show(
-            "Texto foi extraido ($($texto.Length) caracteres), mas nenhum registro foi reconhecido.`r`n`r`nUse o botao 'Copiar Texto Completo' no diagnostico e cole aqui no chat para eu ajustar o parser.",
+            "Texto foi extraido ($($texto.Length) caracteres), mas nenhum registro foi reconhecido.`r`n`r`nUse o botao 'Copiar Texto Completo' no diagnostico.",
             "Parser nao reconheceu","OK","Warning") | Out-Null
     }
 
@@ -1330,6 +1508,10 @@ $gridRegistros.Add_CellDoubleClick({
     $usuario = "$($row.Cells['Usuario'].Value)"
     $computador = "$($row.Cells['Computador'].Value)"
     $tipo = "$($row.Cells['Tipo'].Value)"
+    $mesa = ""
+    if ($gridRegistros.Columns.Contains("MesaComanda")) {
+        $mesa = "$($row.Cells['MesaComanda'].Value)"
+    }
     $descricao = "$($row.Cells['Descricao'].Value)"
 
     $payloadObj = $null
@@ -1339,12 +1521,13 @@ $gridRegistros.Add_CellDoubleClick({
     }
 
     $obj = [ordered]@{
-        Secao      = $secao
-        DataHora   = $dataHora
-        Usuario    = $usuario
-        Computador = $computador
-        Tipo       = $tipo
-        Descricao  = $descricao
+        Secao       = $secao
+        DataHora    = $dataHora
+        Usuario     = $usuario
+        Computador  = $computador
+        Tipo        = $tipo
+        MesaComanda = $mesa
+        Descricao   = $descricao
     }
     if ($payloadObj) { $obj["Payload"] = $payloadObj }
 
@@ -1373,6 +1556,36 @@ $gridImp.Add_CellDoubleClick({
     $msg = "$($r.Cells['MensagemCompleta'].Value)"
     if ([string]::IsNullOrWhiteSpace($msg)) { $msg = "$($r.Cells['Mensagem'].Value)" }
     [System.Windows.Forms.MessageBox]::Show($msg,"Detalhes") | Out-Null
+})
+
+# ============================================================
+#  EVENTOS DOS FILTROS AVANCADOS DO LOG
+# ============================================================
+$txtHoraDe.Add_TextChanged({ Atualizar-GridRegistros -Secao $script:SecaoSelecionada })
+$txtHoraAte.Add_TextChanged({ Atualizar-GridRegistros -Secao $script:SecaoSelecionada })
+$txtMesa.Add_TextChanged({ Atualizar-GridRegistros -Secao $script:SecaoSelecionada })
+$txtUsuarioLog.Add_TextChanged({ Atualizar-GridRegistros -Secao $script:SecaoSelecionada })
+$cmbTipoLog.Add_SelectedIndexChanged({ Atualizar-GridRegistros -Secao $script:SecaoSelecionada })
+
+$chkSomenteErros.Add_CheckedChanged({
+    if ($chkSomenteErros.Checked) { $chkSomenteSucesso.Checked = $false }
+    Atualizar-GridRegistros -Secao $script:SecaoSelecionada
+})
+$chkSomenteSucesso.Add_CheckedChanged({
+    if ($chkSomenteSucesso.Checked) { $chkSomenteErros.Checked = $false }
+    Atualizar-GridRegistros -Secao $script:SecaoSelecionada
+})
+
+$btnLimparFiltrosLog.Add_Click({
+    $txtHoraDe.Text = "00:00"
+    $txtHoraAte.Text = "23:59"
+    $txtMesa.Text = ""
+    $txtUsuarioLog.Text = ""
+    $cmbTipoLog.SelectedIndex = 0
+    $chkSomenteErros.Checked = $false
+    $chkSomenteSucesso.Checked = $false
+    $txtFiltroLog.Text = ""
+    Atualizar-GridRegistros -Secao "(todas)"
 })
 
 # ============================================================
