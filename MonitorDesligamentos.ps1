@@ -474,7 +474,7 @@ function Show-DetalhesJson {
 #  FORMULARIO PRINCIPAL
 # ============================================================
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "MONITORAMENTO"
+$form.Text = "Monitor Logs"
 $form.Size = New-Object System.Drawing.Size(1500, 900)
 $form.StartPosition = "CenterScreen"
 $form.MinimumSize = New-Object System.Drawing.Size(1200, 700)
@@ -667,13 +667,217 @@ $lblResumoImp.Size = New-Object System.Drawing.Size(685, 20)
 $lblResumoImp.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $lblResumoImp.Anchor = "Top,Left,Right"
 
-$gridImp = New-GridPadrao -X 10 -Y 50 -W 1280 -H 650
+$gridImp = New-GridPadrao -X 10 -Y 86 -W 1280 -H 610
+
+# Ferramenta nativa para inspecionar arquivos do spool de impressao (.SPL)
+$btnAnalisarSpool = New-Object System.Windows.Forms.Button
+$btnAnalisarSpool.Text = "Analisar arquivo de impressao (.SPL)"
+$btnAnalisarSpool.Location = New-Object System.Drawing.Point(10, 47)
+$btnAnalisarSpool.Size = New-Object System.Drawing.Size(210, 30)
+$btnAnalisarSpool.Anchor = "Top,Left"
+$btnAnalisarSpool.FlatStyle = "Flat"
+$btnAnalisarSpool.BackColor = [System.Drawing.Color]::FromArgb(37, 99, 235)
+$btnAnalisarSpool.ForeColor = [System.Drawing.Color]::White
+$btnAnalisarSpool.FlatAppearance.BorderSize = 0
+
+$btnAnalisarSpool.Add_Click({
+    $dlg = New-Object System.Windows.Forms.OpenFileDialog
+    $dlg.Title = "Selecionar arquivo de impressao do spooler"
+    $dlg.Filter = "Arquivos de spool (*.spl;*.prn;*.dat)|*.spl;*.prn;*.dat|Todos os arquivos (*.*)|*.*"
+    $dlg.CheckFileExists = $true
+    # Abrir diretamente na pasta padrao dos trabalhos de impressao do Windows.
+    $pastaSpool = Join-Path $env:windir "System32\spool\PRINTERS"
+    if (Test-Path -LiteralPath $pastaSpool -PathType Container) {
+        $dlg.InitialDirectory = $pastaSpool
+    }
+    if ($dlg.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { $dlg.Dispose(); return }
+    $caminho = $dlg.FileName
+    $dlg.Dispose()
+
+    $previewBitmap = $null
+    $metafile = $null
+    $previewStream = $null
+    try {
+        $bytes = [System.IO.File]::ReadAllBytes($caminho)
+        if ($bytes.Length -eq 0) { throw "O arquivo esta vazio." }
+        $tamanho = $bytes.Length
+        $ext = [System.IO.Path]::GetExtension($caminho).ToUpperInvariant()
+        $formato = "Formato de spool nao identificado"
+        $diagnostico = "O Windows nao conseguiu confirmar um formato grafico diretamente renderizavel neste arquivo."
+        $textoEncontrado = New-Object System.Collections.Generic.List[string]
+        $ascii = [System.Text.Encoding]::ASCII.GetString($bytes)
+        if ($ascii.Contains("%PDF")) { $formato = "PDF incorporado detectado" }
+        elseif ($ascii.Contains("@PJL") -or $ascii.Contains("PCL")) { $formato = "Possiveis comandos PCL/PJL" }
+        elseif ($ascii.Contains("%!") -or $ascii.Contains("PostScript")) { $formato = "Possivel PostScript" }
+
+        # Um registro EMF valido tem a assinatura 0x464D4520 (bytes " EMF")
+        # no deslocamento 40 a partir do inicio do registro EMR_HEADER.
+        # Em arquivos SPL, o EMF pode estar encapsulado depois de dados de spool.
+        $emfStart = -1
+        for ($i = 40; $i -lt ($bytes.Length - 44); $i++) {
+            if ($bytes[$i] -eq 0x20 -and $bytes[$i+1] -eq 0x45 -and $bytes[$i+2] -eq 0x4D -and $bytes[$i+3] -eq 0x46) {
+                $candidate = $i - 40
+                if ($candidate -ge 0 -and $candidate + 88 -lt $bytes.Length) {
+                    $recordType = [BitConverter]::ToUInt32($bytes, $candidate)
+                    $headerSize = [BitConverter]::ToUInt32($bytes, $candidate + 4)
+                    $signature = [BitConverter]::ToUInt32($bytes, $candidate + 40)
+                    if ($recordType -eq 1 -and $headerSize -ge 88 -and $signature -eq 0x464D4520) {
+                        $emfStart = $candidate
+                        break
+                    }
+                }
+            }
+        }
+
+        $viewer = New-Object System.Windows.Forms.Form
+        $viewer.Text = "Pre-visualizacao de impressao - $([System.IO.Path]::GetFileName($caminho))"
+        $viewer.Size = New-Object System.Drawing.Size(1180, 820)
+        $viewer.MinimumSize = New-Object System.Drawing.Size(850, 600)
+        $viewer.StartPosition = "CenterParent"
+        $viewer.BackColor = [System.Drawing.Color]::FromArgb(15, 23, 42)
+        $viewer.ForeColor = [System.Drawing.Color]::FromArgb(226, 232, 240)
+
+        $top = New-Object System.Windows.Forms.Panel
+        $top.Dock = 'Top'; $top.Height = 72
+        $top.BackColor = [System.Drawing.Color]::FromArgb(30, 41, 59)
+        $lblTitle = New-Object System.Windows.Forms.Label
+        $lblTitle.Text = "PRE-VISUALIZACAO DO TRABALHO DE IMPRESSAO"
+        $lblTitle.Location = New-Object System.Drawing.Point(16, 10)
+        $lblTitle.Size = New-Object System.Drawing.Size(800, 25)
+        $lblTitle.Font = New-Object System.Drawing.Font('Segoe UI', 11, [System.Drawing.FontStyle]::Bold)
+        $lblTitle.ForeColor = [System.Drawing.Color]::White
+        $lblInfo = New-Object System.Windows.Forms.Label
+        $lblInfo.Text = ("{0:N0} bytes  |  {1}" -f $tamanho, $formato)
+        $lblInfo.Location = New-Object System.Drawing.Point(17, 39)
+        $lblInfo.Size = New-Object System.Drawing.Size(1000, 22)
+        $lblInfo.ForeColor = [System.Drawing.Color]::FromArgb(148, 163, 184)
+        $top.Controls.AddRange(@($lblTitle, $lblInfo))
+
+        $split = New-Object System.Windows.Forms.SplitContainer
+        $split.Dock = 'Fill'; $split.Orientation = 'Vertical'; $split.SplitterDistance = 800
+        $split.BackColor = [System.Drawing.Color]::FromArgb(51, 65, 85)
+
+        $canvas = New-Object System.Windows.Forms.Panel
+        $canvas.Dock = 'Fill'; $canvas.AutoScroll = $true
+        $canvas.BackColor = [System.Drawing.Color]::FromArgb(51, 65, 85)
+        $pic = New-Object System.Windows.Forms.PictureBox
+        $pic.Location = New-Object System.Drawing.Point(20, 20)
+        $pic.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
+        $pic.BackColor = [System.Drawing.Color]::White
+        $pic.BorderStyle = 'FixedSingle'
+        $pic.Size = New-Object System.Drawing.Size(720, 680)
+        $canvas.Controls.Add($pic)
+        $split.Panel1.Controls.Add($canvas)
+
+        $right = New-Object System.Windows.Forms.Panel
+        $right.Dock = 'Fill'; $right.Padding = New-Object System.Windows.Forms.Padding(12)
+        $right.BackColor = [System.Drawing.Color]::FromArgb(15, 23, 42)
+        $lblStatus = New-Object System.Windows.Forms.Label
+        $lblStatus.Dock = 'Top'; $lblStatus.Height = 90
+        $lblStatus.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
+        $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(250, 204, 21)
+        $lblStatus.Text = "PRE-VISUALIZACAO NAO DISPONIVEL`r`n"
+        $txtDiag = New-Object System.Windows.Forms.TextBox
+        $txtDiag.Multiline = $true; $txtDiag.ReadOnly = $true; $txtDiag.Dock = 'Fill'
+        $txtDiag.ScrollBars = 'Vertical'; $txtDiag.WordWrap = $true
+        $txtDiag.Font = New-Object System.Drawing.Font('Consolas', 9)
+        $txtDiag.BackColor = [System.Drawing.Color]::FromArgb(11, 18, 32)
+        $txtDiag.ForeColor = [System.Drawing.Color]::FromArgb(203, 213, 225)
+        $right.Controls.Add($txtDiag); $right.Controls.Add($lblStatus)
+        $split.Panel2.Controls.Add($right)
+
+        $bottom = New-Object System.Windows.Forms.Panel
+        $bottom.Dock = 'Bottom'; $bottom.Height = 48
+        $bottom.BackColor = [System.Drawing.Color]::FromArgb(30, 41, 59)
+        $btnClose = New-Object System.Windows.Forms.Button
+        $btnClose.Text = 'Fechar'; $btnClose.Size = New-Object System.Drawing.Size(100, 30)
+        $btnClose.Location = New-Object System.Drawing.Point(1045, 9)
+        $btnClose.Anchor = 'Right,Top'; $btnClose.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        $btnClose.FlatStyle = 'Flat'; $btnClose.BackColor = [System.Drawing.Color]::FromArgb(37, 99, 235)
+        $btnClose.ForeColor = [System.Drawing.Color]::White
+        $bottom.Controls.Add($btnClose)
+
+        $details = New-Object System.Collections.Generic.List[string]
+        $details.Add("Arquivo: $caminho")
+        $details.Add(("Tamanho: {0:N0} bytes ({1:N2} KB)" -f $tamanho, ($tamanho / 1KB)))
+        $details.Add("Extensao: $ext")
+        $details.Add("Formato: $formato")
+        $details.Add("")
+
+        if ($emfStart -ge 0) {
+            try {
+                $emfBytes = New-Object byte[] ($bytes.Length - $emfStart)
+                [Array]::Copy($bytes, $emfStart, $emfBytes, 0, $emfBytes.Length)
+                $previewStream = New-Object System.IO.MemoryStream(, $emfBytes)
+                $metafile = New-Object System.Drawing.Imaging.Metafile($previewStream)
+                $unit = [System.Drawing.GraphicsUnit]::Pixel
+                $bounds = $metafile.GetBounds([ref]$unit)
+                $w = [Math]::Max(1, [int][Math]::Ceiling($bounds.Width))
+                $h = [Math]::Max(1, [int][Math]::Ceiling($bounds.Height))
+                if ($w -gt 10000 -or $h -gt 10000 -or ($w * [double]$h) -gt 50000000) { throw "Dimensoes EMF fora do limite seguro para pre-visualizacao: ${w}x${h}." }
+                $previewBitmap = New-Object System.Drawing.Bitmap($w, $h)
+                $g = [System.Drawing.Graphics]::FromImage($previewBitmap)
+                $g.Clear([System.Drawing.Color]::White)
+                $g.DrawImage($metafile, 0, 0, $w, $h)
+                $g.Dispose()
+                $pic.Image = $previewBitmap
+                $pic.Size = New-Object System.Drawing.Size(720, [Math]::Max(500, [int](680 * ($h / [double]$w))))
+                $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(134, 239, 172)
+                $lblStatus.Text = "PRE-VISUALIZACAO GERADA`r`nEMF renderizado pelo GDI+ do Windows."
+                $details.Add("Resultado: EMF localizado e renderizado.")
+                $details.Add("Inicio do EMF no SPL: offset $emfStart")
+                $details.Add("Dimensoes renderizadas: ${w} x ${h} pixels")
+                $details.Add("Orientacao aproximada: " + $(if ($w -gt $h) { 'Paisagem' } else { 'Retrato' }))
+                $details.Add("")
+                $details.Add("Nota: isto representa o EMF incorporado localizado no arquivo. O driver ou spooler pode aplicar outras transformacoes na impressao final.")
+            } catch {
+                $lblStatus.ForeColor = [System.Drawing.Color]::FromArgb(253, 186, 116)
+                $lblStatus.Text = "EMF DETECTADO, MAS NAO FOI POSSIVEL RENDERIZAR"
+                $details.Add("Falha ao renderizar EMF: $($_.Exception.Message)")
+                $details.Add("O SPL pode conter um encapsulamento de spool que exige processamento adicional.")
+            }
+        } else {
+            $details.Add("Nao foi encontrado um cabecalho EMF estruturalmente valido no arquivo.")
+            $details.Add("O arquivo pode conter PCL, dados RAW do driver ou outro formato de spool.")
+            $details.Add("Para esses formatos, uma pre-visualizacao fiel depende de interpretar o formato especifico; nao e seguro converter bytes arbitrarios em imagem.")
+        }
+
+        $details.Add("")
+        $details.Add("===== TEXTO ASCII RECONHECIVEL (AMOSTRA) =====")
+        $sb = New-Object System.Text.StringBuilder
+        $countStrings = 0
+        foreach ($b in $bytes) {
+            if (($b -ge 32 -and $b -le 126) -or $b -eq 9) { [void]$sb.Append([char]$b) }
+            else {
+                if ($sb.Length -ge 5 -and $countStrings -lt 250) { $details.Add($sb.ToString()); $countStrings++ }
+                [void]$sb.Clear()
+            }
+        }
+        if ($sb.Length -ge 5 -and $countStrings -lt 250) { $details.Add($sb.ToString()) }
+        $txtDiag.Text = $details -join [Environment]::NewLine
+
+        $viewer.Controls.Add($split)
+        $viewer.Controls.Add($top)
+        $viewer.Controls.Add($bottom)
+        $viewer.AcceptButton = $btnClose
+        [void]$viewer.ShowDialog($form)
+        $viewer.Dispose()
+        $statusLabel.Text = "Analise de impressao concluida: $([System.IO.Path]::GetFileName($caminho))"
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("Nao foi possivel analisar o arquivo:`r`n$($_.Exception.Message)", "Analise de impressao", "OK", "Error") | Out-Null
+    } finally {
+        if ($metafile) { $metafile.Dispose() }
+        if ($previewStream) { $previewStream.Dispose() }
+        if ($previewBitmap) { $previewBitmap.Dispose() }
+    }
+})
 
 $tabImpressoras.Controls.Add($lblModoImp)
 $tabImpressoras.Controls.Add($cmbModoImp)
 $tabImpressoras.Controls.Add($lblFiltroImp)
 $tabImpressoras.Controls.Add($txtBuscaImp)
 $tabImpressoras.Controls.Add($lblResumoImp)
+$tabImpressoras.Controls.Add($btnAnalisarSpool)
 $tabImpressoras.Controls.Add($gridImp)
 
 # ============================================================
@@ -878,7 +1082,7 @@ $sidebar.Anchor = "Top,Bottom,Left"
 $sidebar.BackColor = [System.Drawing.Color]::FromArgb(11, 18, 32)
 
 $brand = New-Object System.Windows.Forms.Label
-$brand.Text = "  Monitor"
+$brand.Text = "Central de logs"
 $brand.Location = New-Object System.Drawing.Point(16, 22)
 $brand.Size = New-Object System.Drawing.Size(185, 55)
 $brand.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 14, [System.Drawing.FontStyle]::Bold)
@@ -949,7 +1153,7 @@ $header.Anchor = "Top,Left,Right"
 $header.BackColor = [System.Drawing.Color]::FromArgb(20, 30, 49)
 
 $headerTitle = New-Object System.Windows.Forms.Label
-$headerTitle.Text = "LOGS DO SISTEMA"
+$headerTitle.Text = "Painel de monitoramento"
 $headerTitle.Location = New-Object System.Drawing.Point(18, 8)
 $headerTitle.Size = New-Object System.Drawing.Size(360, 30)
 $headerTitle.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 16, [System.Drawing.FontStyle]::Bold)
@@ -957,7 +1161,7 @@ $headerTitle.ForeColor = [System.Drawing.Color]::White
 $header.Controls.Add($headerTitle)
 
 $headerHint = New-Object System.Windows.Forms.Label
-$headerHint.Text = "Listagem de logs do sistema."
+$headerHint.Text = "Logs de eventos do sistema."
 $headerHint.Location = New-Object System.Drawing.Point(20, 43)
 $headerHint.Size = New-Object System.Drawing.Size(700, 24)
 $headerHint.Font = New-Object System.Drawing.Font("Segoe UI", 9)
