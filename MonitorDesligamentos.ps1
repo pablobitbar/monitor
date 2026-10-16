@@ -680,6 +680,27 @@ $btnAnalisarSpool.BackColor = [System.Drawing.Color]::FromArgb(37, 99, 235)
 $btnAnalisarSpool.ForeColor = [System.Drawing.Color]::White
 $btnAnalisarSpool.FlatAppearance.BorderSize = 0
 
+# Exportacao e copia rapida da lista de impressoras
+$btnSalvarListaImp = New-Object System.Windows.Forms.Button
+$btnSalvarListaImp.Text = "Salvar lista TXT"
+$btnSalvarListaImp.Location = New-Object System.Drawing.Point(230, 47)
+$btnSalvarListaImp.Size = New-Object System.Drawing.Size(125, 30)
+$btnSalvarListaImp.Anchor = "Top,Left"
+$btnSalvarListaImp.FlatStyle = "Flat"
+$btnSalvarListaImp.BackColor = [System.Drawing.Color]::FromArgb(31, 41, 55)
+$btnSalvarListaImp.ForeColor = [System.Drawing.Color]::White
+$btnSalvarListaImp.FlatAppearance.BorderSize = 0
+
+$btnCopiarListaImp = New-Object System.Windows.Forms.Button
+$btnCopiarListaImp.Text = "Copiar lista (Ctrl+C)"
+$btnCopiarListaImp.Location = New-Object System.Drawing.Point(365, 47)
+$btnCopiarListaImp.Size = New-Object System.Drawing.Size(155, 30)
+$btnCopiarListaImp.Anchor = "Top,Left"
+$btnCopiarListaImp.FlatStyle = "Flat"
+$btnCopiarListaImp.BackColor = [System.Drawing.Color]::FromArgb(37, 99, 235)
+$btnCopiarListaImp.ForeColor = [System.Drawing.Color]::White
+$btnCopiarListaImp.FlatAppearance.BorderSize = 0
+
 $btnAnalisarSpool.Add_Click({
     $dlg = New-Object System.Windows.Forms.OpenFileDialog
     $dlg.Title = "Selecionar arquivo de impressao do spooler"
@@ -878,18 +899,20 @@ $tabImpressoras.Controls.Add($lblFiltroImp)
 $tabImpressoras.Controls.Add($txtBuscaImp)
 $tabImpressoras.Controls.Add($lblResumoImp)
 $tabImpressoras.Controls.Add($btnAnalisarSpool)
+$tabImpressoras.Controls.Add($btnSalvarListaImp)
+$tabImpressoras.Controls.Add($btnCopiarListaImp)
 $tabImpressoras.Controls.Add($gridImp)
 
 # ============================================================
 #  ABA 4 - LOG DO SISTEMA (BITBAR) - COM FILTROS AVANCADOS
 # ============================================================
 $tabLogSistema = New-Object System.Windows.Forms.TabPage
-$tabLogSistema.Text = "Log do Sistema"
+$tabLogSistema.Text = "Log BitBar"
 $tabLogSistema.BackColor = [System.Drawing.Color]::White
 
 # ----- Linha 1: abrir PDF / nome / filtro sessao / limpar -----
 $btnAbrirPdf = New-Object System.Windows.Forms.Button
-$btnAbrirPdf.Text = "Abrir PDF do Log"
+$btnAbrirPdf.Text = "PDF Log Bitbar"
 $btnAbrirPdf.Location = New-Object System.Drawing.Point(10, 10)
 $btnAbrirPdf.Size = New-Object System.Drawing.Size(130, 28)
 
@@ -1109,7 +1132,7 @@ $navItems = @(
     @{ Text = "  Desligamentos"; Index = 0 },
     @{ Text = "  Credenciais de Rede"; Index = 1 },
     @{ Text = "  Impressoras"; Index = 2 },
-    @{ Text = "  Log do Sistema / PDF"; Index = 3 }
+    @{ Text = "  Log do BitBar"; Index = 3 }
 )
 $navY = 162
 foreach ($item in $navItems) {
@@ -1584,6 +1607,58 @@ function Aplicar-FiltroImp {
         $lblResumoImp.Text = "Impressoras: $($script:DadosImpFiltrados.Count) | Nao-Normais: $qOff | Com Erro: $qErr"
     }
 }
+
+# Exportar nome, porta e driver das impressoras para TXT na Area de Trabalho
+$btnSalvarListaImp.Add_Click({
+    if ($cmbModoImp.SelectedIndex -ne 1) {
+        [System.Windows.Forms.MessageBox]::Show("Selecione 'Status atual (fila)' para exportar nome, porta e driver.", "Lista de impressoras", "OK", "Information") | Out-Null
+        return
+    }
+    $lista = @($script:DadosImpFiltrados)
+    if ($lista.Count -eq 0) {
+        [System.Windows.Forms.MessageBox]::Show("Nao ha impressoras para salvar. Atualize a lista ou ajuste a busca.", "Lista de impressoras", "OK", "Warning") | Out-Null
+        return
+    }
+    $desktop = [Environment]::GetFolderPath('Desktop')
+    $arquivo = Join-Path $desktop ("Lista_Impressoras_{0}.txt" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
+    $linhas = @("LISTA DE IMPRESSORAS", "Gerado em: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')", "", ("{0}`t{1}`t{2}" -f 'Nome','Porta','Driver'))
+    foreach ($imp in $lista) {
+        $linhas += ("{0}`t{1}`t{2}" -f $imp.Nome, $imp.Porta, $imp.Driver)
+    }
+    try {
+        [System.IO.File]::WriteAllLines($arquivo, $linhas, [System.Text.Encoding]::UTF8)
+        $statusLabel.Text = "Lista de impressoras salva na Area de Trabalho."
+        [System.Windows.Forms.MessageBox]::Show("Lista salva com sucesso:`r`n$arquivo", "Lista de impressoras", "OK", "Information") | Out-Null
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("Nao foi possivel salvar o arquivo:`r`n$($_.Exception.Message)", "Lista de impressoras", "OK", "Error") | Out-Null
+    }
+})
+
+function Copiar-ListaImpressoras {
+    if ($cmbModoImp.SelectedIndex -ne 1) {
+        [System.Windows.Forms.MessageBox]::Show("Selecione 'Status atual (fila)' para copiar nome, porta e driver.", "Lista de impressoras", "OK", "Information") | Out-Null
+        return
+    }
+    $linhas = @(("{0}`t{1}`t{2}" -f 'Nome','Porta','Driver'))
+    foreach ($imp in @($script:DadosImpFiltrados)) {
+        $linhas += ("{0}`t{1}`t{2}" -f $imp.Nome, $imp.Porta, $imp.Driver)
+    }
+    if ($linhas.Count -le 1) { return }
+    try {
+        [System.Windows.Forms.Clipboard]::SetText(($linhas -join "`r`n"))
+        $statusLabel.Text = "Lista de impressoras copiada. Pode colar com Ctrl+V."
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("Nao foi possivel copiar a lista para a area de transferencia.", "Lista de impressoras", "OK", "Warning") | Out-Null
+    }
+}
+
+$btnCopiarListaImp.Add_Click({ Copiar-ListaImpressoras })
+$gridImp.Add_KeyDown({
+    if ($_.Control -and $_.KeyCode -eq [System.Windows.Forms.Keys]::C) {
+        $_.Handled = $true
+        Copiar-ListaImpressoras
+    }
+})
 
 # ============================================================
 #  LOG DO SISTEMA - FUNCOES
