@@ -239,6 +239,29 @@ function Extrair-TextoPdfPig {
     }
 }
 
+# ------------------------------------------------------------
+#  LIMPEZA DO TEXTO EXTRAIDO (remove rodapes/cabecalhos do PDF)
+# ------------------------------------------------------------
+function Limpar-TextoPdf {
+    param([string]$Texto)
+    if ([string]::IsNullOrWhiteSpace($Texto)) { return $Texto }
+
+    # Rodape "Pagina: X / Y" (com ou sem acento)
+    $Texto = [regex]::Replace($Texto, 'P[áa]gina:\s*\d+\s*/\s*\d+', ' ')
+    # URL do rodape
+    $Texto = [regex]::Replace($Texto, 'www\.bitbar\.com\.br', ' ')
+    # Cabecalho da tabela (com acento ou '..' quando o PDF perde os acentos)
+    $Texto = [regex]::Replace($Texto, 'Usu[áa]rioTipoComputadorDescri[çc][ãa]oHora', ' ')
+    $Texto = [regex]::Replace($Texto, 'Usu\.rioTipoComputadorDescri\.\.oHora', ' ')
+    # Titulo solto
+    $Texto = [regex]::Replace($Texto, 'Log de Altera[çc][õo]es', ' ')
+
+    # Normaliza espacos multiplos em uma linha (preserva quebras)
+    $Texto = [regex]::Replace($Texto, '[ \t]+', ' ')
+
+    return $Texto
+}
+
 function Parse-LogBitBar {
     param([string]$TextoCompleto)
 
@@ -251,7 +274,7 @@ function Parse-LogBitBar {
     $inicioRegistro = '(?=[\p{L}][\p{L}\p{N}._'' -]*?(?:' + $tipos + ')[\p{L}\p{N}._-]*\d{2}:\d{2}:\d{2}(?:\.\d+)?)'
     $textoNormalizado = [regex]::Replace($TextoCompleto, $inicioRegistro, "`n")
 
-    # Cabeçalhos de seção também podem estar colados ao registro anterior.
+    # Cabecalhos de secao tambem podem estar colados ao registro anterior.
     $textoNormalizado = [regex]::Replace(
         $textoNormalizado,
         '(?=(?:Abertura|Fechamento|Clientes|Fiscal|Receive|Sincronizacao|Editando|Sangria|Suprimento|Itens|Libera Cartao/Mesa|Transferencias|Transf\.\s*Prod)UsuárioTipoComputadorDescriçãoHora)',
@@ -261,7 +284,7 @@ function Parse-LogBitBar {
     $linhas = $textoNormalizado -split "`r?`n"
     $secaoAtual = "Geral"
 
-    # Regex da versão que funcionava: aceita data opcional e horário com ou sem milissegundos.
+    # Regex da versao que funcionava: aceita data opcional e horario com ou sem milissegundos.
     $regexColado = [regex]'^(?:(?<data>\d{2}/\d{2}/\d{4}))?(?<usuario>[\p{L}][\p{L}\p{N}._'' -]*?)(?<tipo>Geral|Inserindo|Editando|Libera|Fiscal|Receive|Sincronizacao|Abertura|Fechamento|Clientes|Itens|Bloqueio|Pagamento|Transf\.\s*Prod)(?<comp>[\p{L}\p{N}._-]*?)(?<hora>\d{2}:\d{2}:\d{2}(?:\.\d+)?)(?<desc>.*)$'
     $regexComEspacos = [regex]'^(?:(?<data>\d{2}/\d{2}/\d{4})\s*)?(?<usuario>[\p{L}][\p{L}\p{N}._'' -]*?)\s+(?<tipo>[\p{L}]+)\s+(?<comp>[\p{L}\p{N}._-]+)?\s*(?<hora>\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s*(?<desc>.*)$'
 
@@ -288,7 +311,7 @@ function Parse-LogBitBar {
 
         if ([string]::IsNullOrWhiteSpace($user) -or [string]::IsNullOrWhiteSpace($hora)) { continue }
 
-        # Extrai mesa/comanda para alimentar o filtro avançado sem alterar a descrição original.
+        # Extrai mesa/comanda para alimentar o filtro avancado sem alterar a descricao original.
         $mesaComanda = ""
         $mMesa = [regex]::Match($desc, '"nro_mesa"\s*:\s*"([^"]*)"')
         if ($mMesa.Success -and $mMesa.Groups[1].Value.Trim() -ne "") {
@@ -307,23 +330,37 @@ function Parse-LogBitBar {
             if ($mMesa2.Success) { $mesaComanda = $mMesa2.Groups[1].Value }
         }
 
+        # --- Separacao: Descricao humana x Payload JSON ---
         $jsonPayload = $null
+        $descHumana = $desc
         $jsonMatch = [regex]::Match($desc, '\{.*\}')
         if ($jsonMatch.Success) {
-            try { $jsonPayload = $jsonMatch.Value | ConvertFrom-Json } catch { $jsonPayload = $null }
+            try {
+                $jsonPayload = $jsonMatch.Value | ConvertFrom-Json
+                $descHumana = $desc.Substring(0, $jsonMatch.Index).Trim()
+                $sobra = $desc.Substring($jsonMatch.Index + $jsonMatch.Length).Trim()
+                if ($sobra -ne '') {
+                    $descHumana = ("$descHumana $sobra").Trim()
+                }
+                if ($descHumana -eq '') { $descHumana = $tipo }
+            } catch {
+                $jsonPayload = $null
+                $descHumana = $desc
+            }
         }
 
         [void]$registros.Add([PSCustomObject]@{
-            Secao       = $secaoAtual
-            Data        = $data
-            Hora        = $hora
-            DataHora    = if ($data) { "$data $hora" } else { $hora }
-            Usuario     = $user
-            Computador  = $comp
-            Tipo        = $tipo
-            MesaComanda = $mesaComanda
-            Descricao   = $desc
-            Payload     = $jsonPayload
+            Secao        = $secaoAtual
+            Data         = $data
+            Hora         = $hora
+            DataHora     = if ($data) { "$data $hora" } else { $hora }
+            Usuario      = $user
+            Computador   = $comp
+            Tipo         = $tipo
+            MesaComanda  = $mesaComanda
+            Descricao    = $descHumana      # <-- limpa
+            DescricaoRaw = $desc            # <-- original
+            Payload      = $jsonPayload
         })
     }
 
@@ -437,21 +474,24 @@ function Show-DetalhesJson {
 #  FORMULARIO PRINCIPAL
 # ============================================================
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "Monitor de Eventos"
-$form.Size = New-Object System.Drawing.Size(1350, 850)
+$form.Text = "MONITORAMENTO"
+$form.Size = New-Object System.Drawing.Size(1500, 900)
 $form.StartPosition = "CenterScreen"
-$form.MinimumSize = New-Object System.Drawing.Size(1100, 650)
+$form.MinimumSize = New-Object System.Drawing.Size(1200, 700)
+$form.BackColor = [System.Drawing.Color]::FromArgb(15, 23, 42)
+$form.ForeColor = [System.Drawing.Color]::FromArgb(226, 232, 240)
+$form.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 
 # ============================================================
 #  CONTROLES DE TOPO
 # ============================================================
 $lblPeriodo = New-Object System.Windows.Forms.Label
 $lblPeriodo.Text = "Ultimos (dias):"
-$lblPeriodo.Location = New-Object System.Drawing.Point(10, 12)
+$lblPeriodo.Location = New-Object System.Drawing.Point(235, 12)
 $lblPeriodo.Size = New-Object System.Drawing.Size(90, 20)
 
 $numDias = New-Object System.Windows.Forms.NumericUpDown
-$numDias.Location = New-Object System.Drawing.Point(100, 10)
+$numDias.Location = New-Object System.Drawing.Point(325, 10)
 $numDias.Size = New-Object System.Drawing.Size(60, 24)
 $numDias.Minimum = 0
 $numDias.Maximum = 3650
@@ -459,21 +499,21 @@ $numDias.Value = [int]$script:Config.Dias
 
 $btnAtualizarTudo = New-Object System.Windows.Forms.Button
 $btnAtualizarTudo.Text = "Atualizar"
-$btnAtualizarTudo.Location = New-Object System.Drawing.Point(170, 9)
+$btnAtualizarTudo.Location = New-Object System.Drawing.Point(395, 9)
 $btnAtualizarTudo.Size = New-Object System.Drawing.Size(90, 26)
 
 $btnLimparAlertas = New-Object System.Windows.Forms.Button
 $btnLimparAlertas.Text = "Limpar Alertas"
-$btnLimparAlertas.Location = New-Object System.Drawing.Point(265, 9)
+$btnLimparAlertas.Location = New-Object System.Drawing.Point(490, 9)
 $btnLimparAlertas.Size = New-Object System.Drawing.Size(115, 26)
 
 $lblIntervalo = New-Object System.Windows.Forms.Label
 $lblIntervalo.Text = "Auto (min):"
-$lblIntervalo.Location = New-Object System.Drawing.Point(395, 12)
+$lblIntervalo.Location = New-Object System.Drawing.Point(620, 12)
 $lblIntervalo.Size = New-Object System.Drawing.Size(70, 20)
 
 $numIntervalo = New-Object System.Windows.Forms.NumericUpDown
-$numIntervalo.Location = New-Object System.Drawing.Point(465, 10)
+$numIntervalo.Location = New-Object System.Drawing.Point(690, 10)
 $numIntervalo.Size = New-Object System.Drawing.Size(55, 24)
 $numIntervalo.Minimum = 1
 $numIntervalo.Maximum = 1440
@@ -481,7 +521,7 @@ $numIntervalo.Value = [int]$script:Config.IntervaloMin
 
 $chkAuto = New-Object System.Windows.Forms.CheckBox
 $chkAuto.Text = "Auto-atualizar"
-$chkAuto.Location = New-Object System.Drawing.Point(530, 12)
+$chkAuto.Location = New-Object System.Drawing.Point(755, 12)
 $chkAuto.Size = New-Object System.Drawing.Size(110, 22)
 $chkAuto.Checked = [bool]$script:Config.AlertaAtivo
 
@@ -489,9 +529,12 @@ $chkAuto.Checked = [bool]$script:Config.AlertaAtivo
 #  ABAS
 # ============================================================
 $tabs = New-Object System.Windows.Forms.TabControl
-$tabs.Location = New-Object System.Drawing.Point(10, 45)
-$tabs.Size = New-Object System.Drawing.Size(1315, 740)
+$tabs.Location = New-Object System.Drawing.Point(230, 112)
+$tabs.Size = New-Object System.Drawing.Size(1240, 725)
 $tabs.Anchor = "Top,Bottom,Left,Right"
+$tabs.Appearance = "FlatButtons"
+$tabs.ItemSize = New-Object System.Drawing.Size(1, 1)
+$tabs.SizeMode = "Fixed"
 
 # ============================================================
 #  ABA 1 - DESLIGAMENTOS
@@ -640,6 +683,7 @@ $tabLogSistema = New-Object System.Windows.Forms.TabPage
 $tabLogSistema.Text = "Log do Sistema"
 $tabLogSistema.BackColor = [System.Drawing.Color]::White
 
+# ----- Linha 1: abrir PDF / nome / filtro sessao / limpar -----
 $btnAbrirPdf = New-Object System.Windows.Forms.Button
 $btnAbrirPdf.Text = "Abrir PDF do Log"
 $btnAbrirPdf.Location = New-Object System.Drawing.Point(10, 10)
@@ -666,6 +710,7 @@ $btnLimparFiltrosLog.Text = "Limpar Filtros"
 $btnLimparFiltrosLog.Location = New-Object System.Drawing.Point(945, 11)
 $btnLimparFiltrosLog.Size = New-Object System.Drawing.Size(115, 26)
 
+# ----- Linha 2: hora, mesa, usuario, tipo, checkboxes -----
 $lblHoraDe = New-Object System.Windows.Forms.Label
 $lblHoraDe.Text = "Hora de:"
 $lblHoraDe.Location = New-Object System.Drawing.Point(10, 45)
@@ -740,17 +785,36 @@ $lblResumoLog.Location = New-Object System.Drawing.Point(1095, 47)
 $lblResumoLog.Size = New-Object System.Drawing.Size(195, 20)
 $lblResumoLog.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 
-$gridSecoes = New-GridPadrao -X 10 -Y 80 -W 1280 -H 160
+# ----- Linha 3: BUSCA LIVRE (pesquisa em todas as colunas) -----
+$lblBuscaLivre = New-Object System.Windows.Forms.Label
+$lblBuscaLivre.Text = "Busca livre:"
+$lblBuscaLivre.Location = New-Object System.Drawing.Point(10, 78)
+$lblBuscaLivre.Size = New-Object System.Drawing.Size(75, 20)
+
+$txtBuscaLivre = New-Object System.Windows.Forms.TextBox
+$txtBuscaLivre.Location = New-Object System.Drawing.Point(90, 76)
+$txtBuscaLivre.Size = New-Object System.Drawing.Size(400, 24)
+$txtBuscaLivre.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
+
+$lblBuscaLivreHint = New-Object System.Windows.Forms.Label
+$lblBuscaLivreHint.Text = "(pesquisa em usuario, computador, tipo, mesa, hora e descricao - inclui dentro do JSON)"
+$lblBuscaLivreHint.Location = New-Object System.Drawing.Point(500, 79)
+$lblBuscaLivreHint.Size = New-Object System.Drawing.Size(780, 20)
+$lblBuscaLivreHint.ForeColor = [System.Drawing.Color]::DimGray
+$lblBuscaLivreHint.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Italic)
+$lblBuscaLivreHint.Anchor = "Top,Left,Right"
+
+$gridSecoes = New-GridPadrao -X 10 -Y 110 -W 1280 -H 160
 $gridSecoes.Anchor = "Top,Left,Right"
 
 $lblRegistros = New-Object System.Windows.Forms.Label
 $lblRegistros.Text = "Registros (duplo clique abre o JSON). Filtros aplicados em tempo real:"
-$lblRegistros.Location = New-Object System.Drawing.Point(10, 245)
+$lblRegistros.Location = New-Object System.Drawing.Point(10, 275)
 $lblRegistros.Size = New-Object System.Drawing.Size(700, 18)
 $lblRegistros.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Italic)
 $lblRegistros.ForeColor = [System.Drawing.Color]::DimGray
 
-$gridRegistros = New-GridPadrao -X 10 -Y 265 -W 1280 -H 435
+$gridRegistros = New-GridPadrao -X 10 -Y 295 -W 1280 -H 405
 
 $tabLogSistema.Controls.Add($btnAbrirPdf)
 $tabLogSistema.Controls.Add($lblArquivo)
@@ -770,6 +834,9 @@ $tabLogSistema.Controls.Add($cmbTipoLog)
 $tabLogSistema.Controls.Add($chkSomenteErros)
 $tabLogSistema.Controls.Add($chkSomenteSucesso)
 $tabLogSistema.Controls.Add($lblResumoLog)
+$tabLogSistema.Controls.Add($lblBuscaLivre)
+$tabLogSistema.Controls.Add($txtBuscaLivre)
+$tabLogSistema.Controls.Add($lblBuscaLivreHint)
 $tabLogSistema.Controls.Add($gridSecoes)
 $tabLogSistema.Controls.Add($lblRegistros)
 $tabLogSistema.Controls.Add($gridRegistros)
@@ -801,6 +868,178 @@ $form.Controls.Add($tabs)
 $form.Controls.Add($status)
 
 # ============================================================
+#  DASHBOARD VISUAL - MENU LATERAL E TEMA ESCURO
+#  A navegacao usa as abas existentes, preservando a logica.
+# ============================================================
+$sidebar = New-Object System.Windows.Forms.Panel
+$sidebar.Location = New-Object System.Drawing.Point(0, 0)
+$sidebar.Size = New-Object System.Drawing.Size(215, 860)
+$sidebar.Anchor = "Top,Bottom,Left"
+$sidebar.BackColor = [System.Drawing.Color]::FromArgb(11, 18, 32)
+
+$brand = New-Object System.Windows.Forms.Label
+$brand.Text = "  Monitor"
+$brand.Location = New-Object System.Drawing.Point(16, 22)
+$brand.Size = New-Object System.Drawing.Size(185, 55)
+$brand.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 14, [System.Drawing.FontStyle]::Bold)
+$brand.ForeColor = [System.Drawing.Color]::FromArgb(96, 165, 250)
+$sidebar.Controls.Add($brand)
+
+$subBrand = New-Object System.Windows.Forms.Label
+$subBrand.Text = "Dashboard"
+$subBrand.Location = New-Object System.Drawing.Point(18, 78)
+$subBrand.Size = New-Object System.Drawing.Size(185, 22)
+$subBrand.Font = New-Object System.Drawing.Font("Segoe UI", 8)
+$subBrand.ForeColor = [System.Drawing.Color]::FromArgb(148, 163, 184)
+$sidebar.Controls.Add($subBrand)
+
+$navTitle = New-Object System.Windows.Forms.Label
+$navTitle.Text = "MENU"
+$navTitle.Location = New-Object System.Drawing.Point(18, 130)
+$navTitle.Size = New-Object System.Drawing.Size(170, 20)
+$navTitle.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+$navTitle.ForeColor = [System.Drawing.Color]::FromArgb(100, 116, 139)
+$sidebar.Controls.Add($navTitle)
+
+$navItems = @(
+    @{ Text = "  Desligamentos"; Index = 0 },
+    @{ Text = "  Credenciais de Rede"; Index = 1 },
+    @{ Text = "  Impressoras"; Index = 2 },
+    @{ Text = "  Log do Sistema / PDF"; Index = 3 }
+)
+$navY = 162
+foreach ($item in $navItems) {
+    $navButton = New-Object System.Windows.Forms.Button
+    $navButton.Text = $item.Text
+    $navButton.Tag = $item.Index
+    $navButton.Location = New-Object System.Drawing.Point(10, $navY)
+    $navButton.Size = New-Object System.Drawing.Size(195, 42)
+    $navButton.FlatStyle = "Flat"
+    $navButton.FlatAppearance.BorderSize = 0
+    $navButton.TextAlign = "MiddleLeft"
+    $navButton.Padding = New-Object System.Windows.Forms.Padding(8, 0, 0, 0)
+    $navButton.BackColor = [System.Drawing.Color]::FromArgb(20, 30, 49)
+    $navButton.ForeColor = [System.Drawing.Color]::FromArgb(203, 213, 225)
+    $navButton.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Regular)
+    $navButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $navButton.Add_Click({
+        $tabs.SelectedIndex = [int]$this.Tag
+        foreach ($control in $sidebar.Controls) {
+            if ($control -is [System.Windows.Forms.Button]) {
+                $control.BackColor = [System.Drawing.Color]::FromArgb(20, 30, 49)
+                $control.ForeColor = [System.Drawing.Color]::FromArgb(203, 213, 225)
+            }
+        }
+        $this.BackColor = [System.Drawing.Color]::FromArgb(37, 99, 235)
+        $this.ForeColor = [System.Drawing.Color]::White
+    })
+    $sidebar.Controls.Add($navButton)
+    $navY += 50
+}
+
+$sidebar.Controls.Add($navTitle)
+$form.Controls.Add($sidebar)
+$sidebar.SendToBack()
+
+# Barra superior do dashboard
+$header = New-Object System.Windows.Forms.Panel
+$header.Location = New-Object System.Drawing.Point(230, 12)
+$header.Size = New-Object System.Drawing.Size(1240, 100)
+$header.Anchor = "Top,Left,Right"
+$header.BackColor = [System.Drawing.Color]::FromArgb(20, 30, 49)
+
+$headerTitle = New-Object System.Windows.Forms.Label
+$headerTitle.Text = "LOGS DO SISTEMA"
+$headerTitle.Location = New-Object System.Drawing.Point(18, 8)
+$headerTitle.Size = New-Object System.Drawing.Size(360, 30)
+$headerTitle.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 16, [System.Drawing.FontStyle]::Bold)
+$headerTitle.ForeColor = [System.Drawing.Color]::White
+$header.Controls.Add($headerTitle)
+
+$headerHint = New-Object System.Windows.Forms.Label
+$headerHint.Text = "Listagem de logs do sistema."
+$headerHint.Location = New-Object System.Drawing.Point(20, 43)
+$headerHint.Size = New-Object System.Drawing.Size(700, 24)
+$headerHint.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$headerHint.ForeColor = [System.Drawing.Color]::FromArgb(148, 163, 184)
+$header.Controls.Add($headerHint)
+$form.Controls.Add($header)
+# Os controles de periodo/atualizacao ficam dentro da barra superior.
+foreach ($topControl in @($lblPeriodo, $numDias, $btnAtualizarTudo, $btnLimparAlertas, $lblIntervalo, $numIntervalo, $chkAuto)) {
+    [void]$form.Controls.Remove($topControl)
+    $header.Controls.Add($topControl)
+}
+$lblPeriodo.Location = New-Object System.Drawing.Point(18, 70)
+$numDias.Location = New-Object System.Drawing.Point(108, 67)
+$btnAtualizarTudo.Location = New-Object System.Drawing.Point(178, 66)
+$btnLimparAlertas.Location = New-Object System.Drawing.Point(273, 66)
+$lblIntervalo.Location = New-Object System.Drawing.Point(405, 70)
+$numIntervalo.Location = New-Object System.Drawing.Point(475, 67)
+$chkAuto.Location = New-Object System.Drawing.Point(540, 69)
+$header.BringToFront()
+
+# Tema escuro consistente para abas, campos e tabelas
+$darkBack = [System.Drawing.Color]::FromArgb(15, 23, 42)
+$panelBack = [System.Drawing.Color]::FromArgb(20, 30, 49)
+$textColor = [System.Drawing.Color]::FromArgb(226, 232, 240)
+$mutedColor = [System.Drawing.Color]::FromArgb(148, 163, 184)
+$accentColor = [System.Drawing.Color]::FromArgb(37, 99, 235)
+foreach ($page in @($tabDesligamentos, $tabCredenciais, $tabImpressoras, $tabLogSistema)) {
+    $page.BackColor = $darkBack
+    $page.ForeColor = $textColor
+}
+foreach ($grid in @($gridDesl, $gridCred, $gridImp, $gridSecoes, $gridRegistros)) {
+    if ($null -ne $grid) {
+        $grid.BackgroundColor = $panelBack
+        $grid.BorderStyle = "None"
+        $grid.EnableHeadersVisualStyles = $false
+        $grid.ColumnHeadersDefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(30, 41, 59)
+        $grid.ColumnHeadersDefaultCellStyle.ForeColor = $textColor
+        $grid.DefaultCellStyle.BackColor = $panelBack
+        $grid.DefaultCellStyle.ForeColor = $textColor
+        $grid.DefaultCellStyle.SelectionBackColor = [System.Drawing.Color]::FromArgb(30, 64, 115)
+        $grid.DefaultCellStyle.SelectionForeColor = [System.Drawing.Color]::White
+        $grid.GridColor = [System.Drawing.Color]::FromArgb(45, 58, 78)
+        $grid.AlternatingRowsDefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(24, 36, 56)
+        $grid.RowHeadersVisible = $false
+    }
+}
+foreach ($page in @($tabDesligamentos, $tabCredenciais, $tabImpressoras, $tabLogSistema)) {
+    foreach ($control in $page.Controls) {
+        if ($control -is [System.Windows.Forms.Label]) {
+            $control.ForeColor = $textColor
+            if ($control.Font.Size -lt 9) { $control.ForeColor = $mutedColor }
+        } elseif ($control -is [System.Windows.Forms.TextBox]) {
+            $control.BackColor = [System.Drawing.Color]::FromArgb(30, 41, 59)
+            $control.ForeColor = $textColor
+            $control.BorderStyle = "FixedSingle"
+        } elseif ($control -is [System.Windows.Forms.ComboBox]) {
+            $control.BackColor = [System.Drawing.Color]::FromArgb(30, 41, 59)
+            $control.ForeColor = $textColor
+            $control.FlatStyle = "Flat"
+        } elseif ($control -is [System.Windows.Forms.CheckBox]) {
+            $control.ForeColor = $textColor
+        } elseif ($control -is [System.Windows.Forms.Button]) {
+            $control.FlatStyle = "Flat"
+            $control.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(59, 130, 246)
+            $control.BackColor = $accentColor
+            $control.ForeColor = [System.Drawing.Color]::White
+            $control.Cursor = [System.Windows.Forms.Cursors]::Hand
+        }
+    }
+}
+foreach ($control in @($lblPeriodo, $lblIntervalo, $chkAuto)) {
+    $control.ForeColor = $textColor
+}
+foreach ($control in @($numDias, $numIntervalo)) {
+    $control.BackColor = [System.Drawing.Color]::FromArgb(30, 41, 59)
+    $control.ForeColor = $textColor
+}
+$status.BackColor = [System.Drawing.Color]::FromArgb(11, 18, 32)
+$status.ForeColor = $mutedColor
+$statusLabel.ForeColor = $mutedColor
+
+# ============================================================
 #  ESTADO
 # ============================================================
 $script:DadosDeslBrutos = @()
@@ -814,18 +1053,51 @@ $script:LogSecoes = @()
 $script:DadosLogFiltrados = @()
 $script:SecaoSelecionada = ""
 $script:UltimoErroPdf = ""
+$script:TextoBrutoPdf = ""
 
+# Cores fortes para os eventos: fundos escuros e texto claro para alto contraste.
 $script:Cores = @{
-    41=[System.Drawing.Color]::LightCoral; 6008=[System.Drawing.Color]::Khaki
-    1001=[System.Drawing.Color]::Plum; 1074=[System.Drawing.Color]::LightGreen
-    4625=[System.Drawing.Color]::LightCoral; 4776=[System.Drawing.Color]::Khaki
-    4740=[System.Drawing.Color]::Plum; 6161=[System.Drawing.Color]::LightCoral
-    808=[System.Drawing.Color]::Khaki; 307=[System.Drawing.Color]::LightGreen
+    41   = [System.Drawing.Color]::FromArgb(127, 29, 29)   # vermelho escuro - Kernel-Power
+    6008 = [System.Drawing.Color]::FromArgb(120, 53, 15)   # amarelo/ambar escuro - desligamento inesperado
+    1001 = [System.Drawing.Color]::FromArgb(88, 28, 135)  # roxo escuro - BSOD
+    1074 = [System.Drawing.Color]::FromArgb(20, 83, 45)   # verde escuro - desligamento planejado
+    4625 = [System.Drawing.Color]::FromArgb(127, 29, 29)  # vermelho escuro - falha de logon
+    4776 = [System.Drawing.Color]::FromArgb(120, 53, 15)  # ambar escuro - validacao de credenciais
+    4740 = [System.Drawing.Color]::FromArgb(88, 28, 135)  # roxo escuro - conta bloqueada
+    6161 = [System.Drawing.Color]::FromArgb(127, 29, 29)  # vermelho escuro - falha de impressora
+    808  = [System.Drawing.Color]::FromArgb(120, 53, 15)  # ambar escuro - erro de impressao
+    307  = [System.Drawing.Color]::FromArgb(20, 83, 45)   # verde escuro - trabalho enviado
+}
+
+$script:CoresTexto = @{
+    41   = [System.Drawing.Color]::FromArgb(254, 202, 202)
+    6008 = [System.Drawing.Color]::FromArgb(253, 230, 138)
+    1001 = [System.Drawing.Color]::FromArgb(233, 213, 255)
+    1074 = [System.Drawing.Color]::FromArgb(187, 247, 208)
+    4625 = [System.Drawing.Color]::FromArgb(254, 202, 202)
+    4776 = [System.Drawing.Color]::FromArgb(253, 230, 138)
+    4740 = [System.Drawing.Color]::FromArgb(233, 213, 255)
+    6161 = [System.Drawing.Color]::FromArgb(254, 202, 202)
+    808  = [System.Drawing.Color]::FromArgb(253, 230, 138)
+    307  = [System.Drawing.Color]::FromArgb(187, 247, 208)
 }
 
 $script:TipoDesl = @{41="Kernel-Power";6008="Desligamento Inesperado";1001="BSOD";1074="Desligamento Planejado"}
 $script:TipoCred = @{4625="Falha de Logon";4776="Validacao de Credenciais";4740="Conta Bloqueada"}
 $script:TipoImp = @{307="Trabalho Enviado";6161="Falha de Comunicacao";808="Erro de Impressao"}
+
+# ============================================================
+#  TIMER (precisa existir antes dos handlers que o referenciam)
+# ============================================================
+$timer = New-Object System.Windows.Forms.Timer
+$timer.Interval = [int]$numIntervalo.Value * 60 * 1000
+$timer.Add_Tick({
+    switch ($tabs.SelectedIndex) {
+        0 { Carregar-Desligamentos }
+        1 { Carregar-Credenciais }
+        2 { Carregar-Impressoras }
+    }
+})
 
 # ============================================================
 #  HELPERS
@@ -1167,6 +1439,21 @@ function Atualizar-GridRegistros {
         $dados = $dados | Where-Object { $_.Secao -eq $Secao }
     }
 
+    # ---- BUSCA LIVRE (procura em todas as colunas e no JSON raw) ----
+    $buscaLivre = $txtBuscaLivre.Text.Trim()
+    if ($buscaLivre -ne "") {
+        $termo = $buscaLivre
+        $dados = $dados | Where-Object {
+            ($_.Usuario      -like "*$termo*") -or
+            ($_.Computador   -like "*$termo*") -or
+            ($_.Tipo         -like "*$termo*") -or
+            ($_.MesaComanda  -like "*$termo*") -or
+            ($_.Hora         -like "*$termo*") -or
+            ($_.Descricao    -like "*$termo*") -or
+            ($_.DescricaoRaw -like "*$termo*")
+        }
+    }
+
     $hDe  = $txtHoraDe.Text.Trim()
     $hAte = $txtHoraAte.Text.Trim()
     if ($hDe -match '^\d{1,2}:\d{2}') {
@@ -1182,7 +1469,8 @@ function Atualizar-GridRegistros {
     if ($mesa -ne "") {
         $dados = $dados | Where-Object {
             $_.MesaComanda -match [regex]::Escape($mesa) -or
-            $_.Descricao   -match [regex]::Escape($mesa)
+            $_.Descricao   -match [regex]::Escape($mesa) -or
+            $_.DescricaoRaw -match [regex]::Escape($mesa)
         }
     }
 
@@ -1197,10 +1485,10 @@ function Atualizar-GridRegistros {
     }
 
     if ($chkSomenteErros.Checked) {
-        $dados = $dados | Where-Object { Test-ErroLog $_.Descricao }
+        $dados = $dados | Where-Object { Test-ErroLog $_.DescricaoRaw }
     }
     elseif ($chkSomenteSucesso.Checked) {
-        $dados = $dados | Where-Object { Test-SucessoLog $_.Descricao }
+        $dados = $dados | Where-Object { Test-SucessoLog $_.DescricaoRaw }
     }
 
     $script:DadosLogFiltrados = @($dados)
@@ -1214,6 +1502,8 @@ function Atualizar-GridRegistros {
         if ($gridRegistros.Columns.Count -gt 0) {
             $gridRegistros.Columns["Secao"].Visible = $false
             $gridRegistros.Columns["Data"].Visible = $false
+            if ($gridRegistros.Columns.Contains("DescricaoRaw")) { $gridRegistros.Columns["DescricaoRaw"].Visible = $false }
+            if ($gridRegistros.Columns.Contains("Payload"))     { $gridRegistros.Columns["Payload"].Visible = $false }
             $gridRegistros.Columns["Hora"].FillWeight = 10
             $gridRegistros.Columns["Usuario"].FillWeight = 10
             $gridRegistros.Columns["Computador"].FillWeight = 12
@@ -1223,14 +1513,11 @@ function Atualizar-GridRegistros {
                 $gridRegistros.Columns["MesaComanda"].HeaderText = "Mesa/Comanda"
             }
             $gridRegistros.Columns["Descricao"].FillWeight = 48
-            if ($gridRegistros.Columns.Contains("Payload")) {
-                $gridRegistros.Columns["Payload"].Visible = $false
-            }
         }
     }
 
-    $qErros = @($script:DadosLogFiltrados | Where-Object { Test-ErroLog   $_.Descricao }).Count
-    $qOk    = @($script:DadosLogFiltrados | Where-Object { Test-SucessoLog $_.Descricao }).Count
+    $qErros = @($script:DadosLogFiltrados | Where-Object { Test-ErroLog   $_.DescricaoRaw }).Count
+    $qOk    = @($script:DadosLogFiltrados | Where-Object { Test-SucessoLog $_.DescricaoRaw }).Count
     $lblResumoLog.Text = "Total: $($script:DadosLogFiltrados.Count) | Erros: $qErros | OK: $qOk"
     $statusLabel.Text = "Registros: $($script:DadosLogFiltrados.Count)"
 }
@@ -1248,6 +1535,8 @@ $gridDesl.add_CellFormatting({
     $id = [int]$id
     if ($script:Cores.ContainsKey($id)) {
         $e.CellStyle.BackColor = $script:Cores[$id]
+        if ($script:CoresTexto.ContainsKey($id)) { $e.CellStyle.ForeColor = $script:CoresTexto[$id] }
+        $e.CellStyle.SelectionForeColor = [System.Drawing.Color]::White
         $e.CellStyle.SelectionBackColor = [System.Drawing.Color]::FromArgb(
             [Math]::Max(0,$script:Cores[$id].R-40),
             [Math]::Max(0,$script:Cores[$id].G-40),
@@ -1265,6 +1554,8 @@ $gridCred.add_CellFormatting({
     $id = [int]$id
     if ($script:Cores.ContainsKey($id)) {
         $e.CellStyle.BackColor = $script:Cores[$id]
+        if ($script:CoresTexto.ContainsKey($id)) { $e.CellStyle.ForeColor = $script:CoresTexto[$id] }
+        $e.CellStyle.SelectionForeColor = [System.Drawing.Color]::White
         $e.CellStyle.SelectionBackColor = [System.Drawing.Color]::FromArgb(
             [Math]::Max(0,$script:Cores[$id].R-40),
             [Math]::Max(0,$script:Cores[$id].G-40),
@@ -1283,6 +1574,8 @@ $gridImp.add_CellFormatting({
         $id = [int]$id
         if ($script:Cores.ContainsKey($id)) {
             $e.CellStyle.BackColor = $script:Cores[$id]
+            if ($script:CoresTexto.ContainsKey($id)) { $e.CellStyle.ForeColor = $script:CoresTexto[$id] }
+            $e.CellStyle.SelectionForeColor = [System.Drawing.Color]::White
             $e.CellStyle.SelectionBackColor = [System.Drawing.Color]::FromArgb(
                 [Math]::Max(0,$script:Cores[$id].R-40),
                 [Math]::Max(0,$script:Cores[$id].G-40),
@@ -1291,9 +1584,20 @@ $gridImp.add_CellFormatting({
     } else {
         $st = $r.Cells["Status"].Value
         $er = $r.Cells["JobsComErro"].Value
-        if ($er -and [int]$er -gt 0) { $e.CellStyle.BackColor = [System.Drawing.Color]::LightCoral }
-        elseif ($st -and $st -ne "Normal") { $e.CellStyle.BackColor = [System.Drawing.Color]::Khaki }
-        else { $e.CellStyle.BackColor = [System.Drawing.Color]::LightGreen }
+        if ($er -and [int]$er -gt 0) {
+            $e.CellStyle.BackColor = [System.Drawing.Color]::FromArgb(127, 29, 29)
+            $e.CellStyle.ForeColor = [System.Drawing.Color]::FromArgb(254, 202, 202)
+        }
+        elseif ($st -and $st -ne "Normal") {
+            $e.CellStyle.BackColor = [System.Drawing.Color]::FromArgb(120, 53, 15)
+            $e.CellStyle.ForeColor = [System.Drawing.Color]::FromArgb(253, 230, 138)
+        }
+        else {
+            $e.CellStyle.BackColor = [System.Drawing.Color]::FromArgb(20, 83, 45)
+            $e.CellStyle.ForeColor = [System.Drawing.Color]::FromArgb(187, 247, 208)
+        }
+        $e.CellStyle.SelectionBackColor = [System.Drawing.Color]::FromArgb(30, 64, 115)
+        $e.CellStyle.SelectionForeColor = [System.Drawing.Color]::White
     }
 })
 
@@ -1306,11 +1610,12 @@ $gridRegistros.add_CellFormatting({
     if ($desc) {
         $descStr = "$desc"
         if (Test-ErroLog $descStr) {
-            $e.CellStyle.BackColor = [System.Drawing.Color]::LightCoral
-            $e.CellStyle.ForeColor = [System.Drawing.Color]::DarkRed
+            $e.CellStyle.BackColor = [System.Drawing.Color]::FromArgb(127, 29, 29)
+            $e.CellStyle.ForeColor = [System.Drawing.Color]::FromArgb(254, 202, 202)
         }
         elseif (Test-SucessoLog $descStr) {
-            $e.CellStyle.BackColor = [System.Drawing.Color]::Honeydew
+            $e.CellStyle.BackColor = [System.Drawing.Color]::FromArgb(20, 83, 45)
+            $e.CellStyle.ForeColor = [System.Drawing.Color]::FromArgb(187, 247, 208)
         }
     }
 })
@@ -1405,6 +1710,9 @@ $btnAbrirPdf.Add_Click({
         return
     }
 
+    # >>> Limpeza dos rodapes/cabecalhos do PDF <<<
+    $texto = Limpar-TextoPdf -Texto $texto
+
     $script:TextoBrutoPdf = $texto
     $linhasBrutas = ($texto -split "`r?`n") | Where-Object { $_.Trim() -ne "" }
     $totalLinhas = @($linhasBrutas).Count
@@ -1478,6 +1786,7 @@ $preview
     $form.Refresh()
 
     $script:LogRegistros = Parse-LogBitBar -TextoCompleto $texto
+    $script:SecaoSelecionada = "(todas)"
     Atualizar-GridSecoes
     Atualizar-GridRegistros -Secao "(todas)"
 
@@ -1491,49 +1800,72 @@ $preview
 })
 
 $txtFiltroLog.Add_TextChanged({ Atualizar-GridSecoes })
+$txtBuscaLivre.Add_TextChanged({ Atualizar-GridRegistros -Secao $script:SecaoSelecionada })
 
 $gridSecoes.Add_CellDoubleClick({
     if ($gridSecoes.SelectedRows.Count -eq 0) { return }
     $row = $gridSecoes.SelectedRows[0]
     $secao = "$($row.Cells['Secao'].Value)"
-    if ($secao) { Atualizar-GridRegistros -Secao $secao }
+    if ($secao) {
+        $script:SecaoSelecionada = $secao
+        Atualizar-GridRegistros -Secao $secao
+    }
 })
 
 $gridRegistros.Add_CellDoubleClick({
     if ($gridRegistros.SelectedRows.Count -eq 0) { return }
     $row = $gridRegistros.SelectedRows[0]
 
-    $secao = "$($row.Cells['Secao'].Value)"
-    $dataHora = "$($row.Cells['DataHora'].Value)"
-    $usuario = "$($row.Cells['Usuario'].Value)"
+    $secao      = "$($row.Cells['Secao'].Value)"
+    $dataHora   = "$($row.Cells['DataHora'].Value)"
+    $usuario    = "$($row.Cells['Usuario'].Value)"
     $computador = "$($row.Cells['Computador'].Value)"
-    $tipo = "$($row.Cells['Tipo'].Value)"
-    $mesa = ""
-    if ($gridRegistros.Columns.Contains("MesaComanda")) {
-        $mesa = "$($row.Cells['MesaComanda'].Value)"
-    }
-    $descricao = "$($row.Cells['Descricao'].Value)"
+    $tipo       = "$($row.Cells['Tipo'].Value)"
+    $mesa       = if ($gridRegistros.Columns.Contains("MesaComanda")) { "$($row.Cells['MesaComanda'].Value)" } else { "" }
+    $descricao  = "$($row.Cells['Descricao'].Value)"
+    $raw        = if ($gridRegistros.Columns.Contains("DescricaoRaw")) { "$($row.Cells['DescricaoRaw'].Value)" } else { $descricao }
 
-    $payloadObj = $null
-    $jsonMatch = [regex]::Match($descricao, '\{.*\}')
+    $cabecalho = @"
+============================================================
+ REGISTRO
+============================================================
+ Secao      : $secao
+ Data/Hora  : $dataHora
+ Usuario    : $usuario
+ Computador : $computador
+ Tipo       : $tipo
+ Mesa/Com.  : $mesa
+
+------------------------------------------------------------
+ DESCRICAO
+------------------------------------------------------------
+$descricao
+
+"@
+
+    $jsonFormatado = ""
+    $jsonMatch = [regex]::Match($raw, '\{.*\}')
     if ($jsonMatch.Success) {
-        try { $payloadObj = $jsonMatch.Value | ConvertFrom-Json } catch { $payloadObj = $null }
+        try {
+            $obj = $jsonMatch.Value | ConvertFrom-Json
+            $jsonFormatado = $obj | ConvertTo-Json -Depth 20
+        } catch {
+            $jsonFormatado = $jsonMatch.Value
+        }
     }
 
-    $obj = [ordered]@{
-        Secao       = $secao
-        DataHora    = $dataHora
-        Usuario     = $usuario
-        Computador  = $computador
-        Tipo        = $tipo
-        MesaComanda = $mesa
-        Descricao   = $descricao
+    if ($jsonFormatado -ne '') {
+        $conteudo = $cabecalho + @"
+------------------------------------------------------------
+ PAYLOAD (JSON formatado)
+------------------------------------------------------------
+$jsonFormatado
+"@
+    } else {
+        $conteudo = $cabecalho
     }
-    if ($payloadObj) { $obj["Payload"] = $payloadObj }
 
-    $jsonFinal = $obj | ConvertTo-Json -Depth 10
-
-    Show-DetalhesJson -Titulo "Detalhes - $secao" -JsonText $jsonFinal
+    Show-DetalhesJson -Titulo "Detalhes - $secao ($tipo)" -JsonText $conteudo
 })
 
 $gridDesl.Add_CellDoubleClick({
@@ -1581,38 +1913,33 @@ $btnLimparFiltrosLog.Add_Click({
     $txtHoraAte.Text = "23:59"
     $txtMesa.Text = ""
     $txtUsuarioLog.Text = ""
+    $txtBuscaLivre.Text = ""
     $cmbTipoLog.SelectedIndex = 0
     $chkSomenteErros.Checked = $false
     $chkSomenteSucesso.Checked = $false
     $txtFiltroLog.Text = ""
+    $script:SecaoSelecionada = "(todas)"
     Atualizar-GridRegistros -Secao "(todas)"
-})
-
-# ============================================================
-#  TIMER
-# ============================================================
-$timer = New-Object System.Windows.Forms.Timer
-$timer.Interval = [int]$numIntervalo.Value * 60 * 1000
-$timer.Add_Tick({
-    switch ($tabs.SelectedIndex) {
-        0 { Carregar-Desligamentos }
-        1 { Carregar-Credenciais }
-        2 { Carregar-Impressoras }
-    }
-})
-
-if ($chkAuto.Checked) { $timer.Start() }
-
-# ============================================================
-#  FECHAMENTO
-# ============================================================
-$form.Add_FormClosing({
-    $timer.Stop()
 })
 
 # ============================================================
 #  INICIALIZACAO
 # ============================================================
+if ($chkAuto.Checked) { $timer.Start() }
+
+$form.Add_FormClosing({
+    $timer.Stop()
+})
+
+if ($sidebar.Controls.Count -gt 3) {
+    foreach ($control in $sidebar.Controls) {
+        if ($control -is [System.Windows.Forms.Button] -and [int]$control.Tag -eq 0) {
+            $control.BackColor = [System.Drawing.Color]::FromArgb(37, 99, 235)
+            $control.ForeColor = [System.Drawing.Color]::White
+        }
+    }
+}
+
 $form.Add_Shown({
     Carregar-Desligamentos
 })
