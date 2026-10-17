@@ -701,6 +701,17 @@ $btnCopiarListaImp.BackColor = [System.Drawing.Color]::FromArgb(37, 99, 235)
 $btnCopiarListaImp.ForeColor = [System.Drawing.Color]::White
 $btnCopiarListaImp.FlatAppearance.BorderSize = 0
 
+# Abrir a interface web da impressora selecionada (quando a porta revelar IP/host)
+$btnAbrirWebImp = New-Object System.Windows.Forms.Button
+$btnAbrirWebImp.Text = "Abrir pagina web"
+$btnAbrirWebImp.Location = New-Object System.Drawing.Point(530, 47)
+$btnAbrirWebImp.Size = New-Object System.Drawing.Size(145, 30)
+$btnAbrirWebImp.Anchor = "Top,Left"
+$btnAbrirWebImp.FlatStyle = "Flat"
+$btnAbrirWebImp.BackColor = [System.Drawing.Color]::FromArgb(22, 101, 52)
+$btnAbrirWebImp.ForeColor = [System.Drawing.Color]::White
+$btnAbrirWebImp.FlatAppearance.BorderSize = 0
+
 $btnAnalisarSpool.Add_Click({
     $dlg = New-Object System.Windows.Forms.OpenFileDialog
     $dlg.Title = "Selecionar arquivo de impressao do spooler"
@@ -901,18 +912,19 @@ $tabImpressoras.Controls.Add($lblResumoImp)
 $tabImpressoras.Controls.Add($btnAnalisarSpool)
 $tabImpressoras.Controls.Add($btnSalvarListaImp)
 $tabImpressoras.Controls.Add($btnCopiarListaImp)
+$tabImpressoras.Controls.Add($btnAbrirWebImp)
 $tabImpressoras.Controls.Add($gridImp)
 
 # ============================================================
 #  ABA 4 - LOG DO SISTEMA (BITBAR) - COM FILTROS AVANCADOS
 # ============================================================
 $tabLogSistema = New-Object System.Windows.Forms.TabPage
-$tabLogSistema.Text = "Log BitBar"
+$tabLogSistema.Text = "Log do Sistema"
 $tabLogSistema.BackColor = [System.Drawing.Color]::White
 
 # ----- Linha 1: abrir PDF / nome / filtro sessao / limpar -----
 $btnAbrirPdf = New-Object System.Windows.Forms.Button
-$btnAbrirPdf.Text = "PDF Log Bitbar"
+$btnAbrirPdf.Text = "Abrir PDF do Log"
 $btnAbrirPdf.Location = New-Object System.Drawing.Point(10, 10)
 $btnAbrirPdf.Size = New-Object System.Drawing.Size(130, 28)
 
@@ -1132,7 +1144,7 @@ $navItems = @(
     @{ Text = "  Desligamentos"; Index = 0 },
     @{ Text = "  Credenciais de Rede"; Index = 1 },
     @{ Text = "  Impressoras"; Index = 2 },
-    @{ Text = "  Log do BitBar"; Index = 3 }
+    @{ Text = "  Log do Sistema / PDF"; Index = 3 }
 )
 $navY = 162
 foreach ($item in $navItems) {
@@ -1653,6 +1665,59 @@ function Copiar-ListaImpressoras {
 }
 
 $btnCopiarListaImp.Add_Click({ Copiar-ListaImpressoras })
+
+$btnAbrirWebImp.Add_Click({
+    if ($cmbModoImp.SelectedIndex -ne 1) {
+        [System.Windows.Forms.MessageBox]::Show("Selecione 'Status atual (fila)' para abrir a pagina web da impressora.", "Pagina web da impressora", "OK", "Information") | Out-Null
+        return
+    }
+    if (-not $gridImp.CurrentRow -or $gridImp.CurrentRow.Index -lt 0) {
+        [System.Windows.Forms.MessageBox]::Show("Selecione uma impressora na lista primeiro.", "Pagina web da impressora", "OK", "Information") | Out-Null
+        return
+    }
+    $selecionada = $null
+    try { $selecionada = $gridImp.CurrentRow.DataBoundItem } catch {}
+    if (-not $selecionada -or [string]::IsNullOrWhiteSpace([string]$selecionada.Porta)) {
+        [System.Windows.Forms.MessageBox]::Show("Nao foi possivel identificar a porta da impressora selecionada.", "Pagina web da impressora", "OK", "Warning") | Out-Null
+        return
+    }
+
+    $portaNome = [string]$selecionada.Porta
+    $hostImpressora = $null
+    # Portas Standard TCP/IP guardam o IP ou nome do equipamento.
+    try {
+        $portaObj = Get-PrinterPort -Name $portaNome -ErrorAction Stop
+        if ($portaObj.PrinterHostAddress) { $hostImpressora = [string]$portaObj.PrinterHostAddress }
+        elseif ($portaObj.HostAddress) { $hostImpressora = [string]$portaObj.HostAddress }
+    } catch {}
+
+    # Algumas instalacoes ja usam o IP/host como nome da porta.
+    if ([string]::IsNullOrWhiteSpace($hostImpressora)) {
+        if ($portaNome -match '^\\?([a-zA-Z0-9.-]+)$') { $hostImpressora = $Matches[1] }
+        elseif ($portaNome -match '^IP_([a-zA-Z0-9.-]+)$') { $hostImpressora = $Matches[1] }
+        elseif ($portaNome -match '^([0-9]{1,3}(?:\.[0-9]{1,3}){3})$') { $hostImpressora = $portaNome }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($hostImpressora)) {
+        [System.Windows.Forms.MessageBox]::Show("Nao consegui descobrir o IP/nome do equipamento pela porta '$portaNome'. Verifique se a impressora usa uma porta Standard TCP/IP.", "Pagina web da impressora", "OK", "Warning") | Out-Null
+        return
+    }
+
+    # Evita aceitar valores que possam formar uma URL arbitraria.
+    $hostImpressora = $hostImpressora.Trim()
+    if ($hostImpressora -notmatch '^[a-zA-Z0-9.-]+$') {
+        [System.Windows.Forms.MessageBox]::Show("O IP/nome detectado nao parece valido: $hostImpressora", "Pagina web da impressora", "OK", "Warning") | Out-Null
+        return
+    }
+    $url = "http://$hostImpressora/"
+    try {
+        Start-Process $url
+        $statusLabel.Text = "Abrindo pagina web de $($selecionada.Nome): $url"
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("Nao foi possivel abrir a pagina web:`r`n$url`r`n$($_.Exception.Message)", "Pagina web da impressora", "OK", "Error") | Out-Null
+    }
+})
+
 $gridImp.Add_KeyDown({
     if ($_.Control -and $_.KeyCode -eq [System.Windows.Forms.Keys]::C) {
         $_.Handled = $true
@@ -2162,11 +2227,10 @@ $gridCred.Add_CellDoubleClick({
     [System.Windows.Forms.MessageBox]::Show($msg,"Detalhes") | Out-Null
 })
 $gridImp.Add_CellDoubleClick({
-    if ($gridImp.SelectedRows.Count -eq 0) { return }
-    $r = $gridImp.SelectedRows[0]
-    $msg = "$($r.Cells['MensagemCompleta'].Value)"
-    if ([string]::IsNullOrWhiteSpace($msg)) { $msg = "$($r.Cells['Mensagem'].Value)" }
-    [System.Windows.Forms.MessageBox]::Show($msg,"Detalhes") | Out-Null
+    # Duplo clique em uma impressora abre a pagina web, usando a mesma logica do botao.
+    if ($cmbModoImp.SelectedIndex -eq 1 -and $gridImp.CurrentRow) {
+        $btnAbrirWebImp.PerformClick()
+    }
 })
 
 # ============================================================
