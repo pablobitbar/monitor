@@ -1,4 +1,4 @@
-Add-Type -AssemblyName System.Windows.Forms
+﻿Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 # ============================================================
@@ -405,14 +405,15 @@ function New-GridPadrao {
     $g.AllowUserToResizeColumns = $true
     $g.SelectionMode = "FullRowSelect"
     $g.MultiSelect = $false
-    $g.AutoSizeColumnsMode = "DisplayedCells"
+    $g.AutoSizeColumnsMode = "None"
     $g.AutoSizeRowsMode = "None"
     $g.RowHeadersVisible = $false
     $g.Anchor = "Top,Bottom,Left,Right"
     $g.BackgroundColor = [System.Drawing.Color]::White
     $g.BorderStyle = "FixedSingle"
     $g.EnableHeadersVisualStyles = $false
-    $g.ScrollBars = "Both"
+    # Mantem as barras horizontal e vertical disponiveis quando o conteudo exceder a area visivel.
+    $g.ScrollBars = [System.Windows.Forms.ScrollBars]::Both
     $g.ColumnHeadersDefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 48)
     $g.ColumnHeadersDefaultCellStyle.ForeColor = [System.Drawing.Color]::White
     $g.ColumnHeadersDefaultCellStyle.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
@@ -712,6 +713,17 @@ $btnAbrirWebImp.BackColor = [System.Drawing.Color]::FromArgb(22, 101, 52)
 $btnAbrirWebImp.ForeColor = [System.Drawing.Color]::White
 $btnAbrirWebImp.FlatAppearance.BorderSize = 0
 
+# Envia uma comanda de teste diretamente para a impressora selecionada.
+$btnTesteComandaImp = New-Object System.Windows.Forms.Button
+$btnTesteComandaImp.Text = "Teste individual de comanda"
+$btnTesteComandaImp.Location = New-Object System.Drawing.Point(685, 47)
+$btnTesteComandaImp.Size = New-Object System.Drawing.Size(190, 30)
+$btnTesteComandaImp.Anchor = "Top,Left"
+$btnTesteComandaImp.FlatStyle = "Flat"
+$btnTesteComandaImp.BackColor = [System.Drawing.Color]::FromArgb(124, 58, 237)
+$btnTesteComandaImp.ForeColor = [System.Drawing.Color]::White
+$btnTesteComandaImp.FlatAppearance.BorderSize = 0
+
 $btnAnalisarSpool.Add_Click({
     $dlg = New-Object System.Windows.Forms.OpenFileDialog
     $dlg.Title = "Selecionar arquivo de impressao do spooler"
@@ -913,6 +925,7 @@ $tabImpressoras.Controls.Add($btnAnalisarSpool)
 $tabImpressoras.Controls.Add($btnSalvarListaImp)
 $tabImpressoras.Controls.Add($btnCopiarListaImp)
 $tabImpressoras.Controls.Add($btnAbrirWebImp)
+$tabImpressoras.Controls.Add($btnTesteComandaImp)
 $tabImpressoras.Controls.Add($gridImp)
 
 # ============================================================
@@ -1600,6 +1613,24 @@ function Aplicar-FiltroImp {
         $bl = New-Object System.ComponentModel.BindingList[object]
         foreach ($i in $script:DadosImpFiltrados) { $bl.Add($i) | Out-Null }
         $gridImp.DataSource = $bl
+        # Coluna de acao por linha, disponivel somente no modo Status atual (fila).
+        if ($cmbModoImp.SelectedIndex -eq 1) {
+            if (-not $gridImp.Columns.Contains("Teste")) {
+                $colTeste = New-Object System.Windows.Forms.DataGridViewButtonColumn
+                $colTeste.Name = "Teste"
+                $colTeste.HeaderText = "Teste"
+                $colTeste.Text = "Imprimir teste"
+                $colTeste.UseColumnTextForButtonValue = $true
+                $colTeste.Width = 105
+                $colTeste.MinimumWidth = 95
+                $colTeste.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+                [void]$gridImp.Columns.Add($colTeste)
+            }
+            $gridImp.Columns["Teste"].Visible = $true
+            $gridImp.Columns["Teste"].DisplayIndex = $gridImp.Columns.Count - 1
+        } elseif ($gridImp.Columns.Contains("Teste")) {
+            $gridImp.Columns["Teste"].Visible = $false
+        }
         if ($gridImp.Columns.Count -gt 0) {
             if ($cmbModoImp.SelectedIndex -eq 0) {
                 $gridImp.Columns["DataHora"].DefaultCellStyle.Format = "dd/MM/yyyy HH:mm:ss"
@@ -1665,6 +1696,147 @@ function Copiar-ListaImpressoras {
 }
 
 $btnCopiarListaImp.Add_Click({ Copiar-ListaImpressoras })
+
+$btnTesteComandaImp.Add_Click({
+    if ($cmbModoImp.SelectedIndex -ne 1) {
+        [System.Windows.Forms.MessageBox]::Show("Selecione 'Status atual (fila)' para enviar o teste à impressora.", "Teste de comanda", "OK", "Information") | Out-Null
+        return
+    }
+    if (-not $gridImp.CurrentRow -or $gridImp.CurrentRow.Index -lt 0) {
+        [System.Windows.Forms.MessageBox]::Show("Selecione uma impressora na lista primeiro.", "Teste de comanda", "OK", "Information") | Out-Null
+        return
+    }
+    $selecionada = $null
+    try { $selecionada = $gridImp.CurrentRow.DataBoundItem } catch {}
+    if (-not $selecionada -or [string]::IsNullOrWhiteSpace([string]$selecionada.Nome)) {
+        [System.Windows.Forms.MessageBox]::Show("Nao foi possivel identificar a impressora selecionada.", "Teste de comanda", "OK", "Warning") | Out-Null
+        return
+    }
+
+    $confirmacao = [System.Windows.Forms.MessageBox]::Show(
+        "Enviar uma comanda de teste para:`r`n$($selecionada.Nome)?`r`n`r`nO teste sera impresso imediatamente.",
+        "Confirmar impressao", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+    if ($confirmacao -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+
+    $printDoc = New-Object System.Drawing.Printing.PrintDocument
+    $printDoc.DocumentName = "Teste individual de comanda"
+    $printDoc.PrinterSettings.PrinterName = [string]$selecionada.Nome
+    if (-not $printDoc.PrinterSettings.IsValid) {
+        $printDoc.Dispose()
+        [System.Windows.Forms.MessageBox]::Show("A impressora selecionada nao esta disponivel no Windows: $($selecionada.Nome)", "Teste de comanda", "OK", "Error") | Out-Null
+        return
+    }
+    $printDoc.DefaultPageSettings.Landscape = $false
+    $printDoc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(5, 5, 5, 5)
+
+    $printerNameForTicket = [string]$selecionada.Nome
+    $hostNameForTicket = [string]$env:COMPUTERNAME
+    $ipForTicket = "IP nao identificado"
+    try {
+        $ipLocal = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
+            Where-Object { $_.IPAddress -ne '127.0.0.1' -and $_.IPAddress -notlike '169.254*' -and $_.AddressState -eq 'Preferred' } |
+            Sort-Object { if ($_.InterfaceAlias -match 'Wi-Fi|Ethernet|Rede') { 0 } else { 1 } } |
+            Select-Object -First 1 -ExpandProperty IPAddress
+        if ($ipLocal) { $ipForTicket = [string]$ipLocal }
+    } catch {
+        try {
+            $ipLocal = [System.Net.Dns]::GetHostEntry($hostNameForTicket).AddressList |
+                Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork -and $_.IPAddressToString -ne '127.0.0.1' } |
+                Select-Object -First 1
+            if ($ipLocal) { $ipForTicket = $ipLocal.IPAddressToString }
+        } catch {}
+    }
+    $printHandler = {
+        param($sender, $e)
+        $g = $e.Graphics
+        $g.PageUnit = [System.Drawing.GraphicsUnit]::Display
+        $left = [single]$e.MarginBounds.Left
+        $top = [single]$e.MarginBounds.Top
+        $width = [single]$e.MarginBounds.Width
+        $black = [System.Drawing.Brushes]::Black
+        $white = [System.Drawing.Brushes]::White
+        $fontTitle = New-Object System.Drawing.Font("Arial", 13, [System.Drawing.FontStyle]::Bold)
+        $fontBanner = New-Object System.Drawing.Font("Arial", 20, [System.Drawing.FontStyle]::Bold)
+        $font = New-Object System.Drawing.Font("Arial", 9, [System.Drawing.FontStyle]::Regular)
+        $fontBold = New-Object System.Drawing.Font("Arial", 12, [System.Drawing.FontStyle]::Bold)
+        $fontFooter = New-Object System.Drawing.Font("Arial", 8, [System.Drawing.FontStyle]::Bold)
+        $y = $top
+        $agora = Get-Date
+        $hora = $agora.ToString("HH:mm")
+        $dataHora = $agora.ToString("dd/MM HH:mm")
+
+        # Cabecalho inspirado no cupom original, sem nome do estabelecimento/copia.
+        $cabecalho = "TESTE DE IMPRESSAO"
+        $cabSize = $g.MeasureString($cabecalho, $fontTitle)
+        $g.DrawString($cabecalho, $fontTitle, $black, $left + [Math]::Max(0, ($width - $cabSize.Width) / 2), $y)
+        $y += 27
+
+        # Tarja preta: somente o identificador solicitado.
+        $g.FillRectangle($black, $left + 8, $y, $width - 16, 42)
+        $bannerText = "#999"
+        $bannerSize = $g.MeasureString($bannerText, $fontBanner)
+        $g.DrawString($bannerText, $fontBanner, $white, $left + ($width - $bannerSize.Width) / 2, $y + 4)
+        $y += 72
+
+        # Cabecalho da linha de itens com quantidade, descricao e horario.
+        $g.DrawLine([System.Drawing.Pens]::Black, $left, $y, $left + $width, $y)
+        $g.DrawString("Qtd", $fontBold, $black, $left + 12, $y + 3)
+        $g.DrawString("Descricao", $fontBold, $black, $left + 58, $y + 3)
+        $horaSize = $g.MeasureString($hora, $fontBold)
+        $g.DrawString($hora, $fontBold, $black, $left + $width - $horaSize.Width - 16, $y + 3)
+        $y += 28
+        $g.DrawLine([System.Drawing.Pens]::Black, $left + 8, $y, $left + $width - 8, $y)
+        $y += 22
+
+        # Item de teste fixo solicitado.
+        $g.DrawString("1", $fontBold, $black, $left + 25, $y)
+        $descricao = "TESTE BITBAR NAO FAZER"
+        $g.DrawString($descricao, $fontBold, $black, $left + 58, $y)
+        $y += 48
+        $g.DrawLine([System.Drawing.Pens]::Black, $left, $y, $left + $width, $y)
+        $y += 10
+
+        # Rodape sem versao e sem superusuario; inclui hostname, IP, data/hora e impressora.
+        $g.DrawString(("PC: {0}  IP: {1}" -f $hostNameForTicket, $ipForTicket), $fontFooter, $black, $left + 12, $y)
+        $dataSize = $g.MeasureString($dataHora, $fontFooter)
+        $g.DrawString($dataHora, $fontFooter, $black, $left + $width - $dataSize.Width - 12, $y)
+        $y += 24
+        $g.DrawString("#999", $fontFooter, $black, $left + 12, $y)
+        $printerSize = $g.MeasureString($printerNameForTicket, $fontFooter)
+        $g.DrawString($printerNameForTicket, $fontFooter, $black, $left + $width - $printerSize.Width - 12, $y)
+
+        $fontTitle.Dispose(); $fontBanner.Dispose(); $font.Dispose(); $fontBold.Dispose(); $fontFooter.Dispose()
+        $e.HasMorePages = $false
+    }.GetNewClosure()
+    $printDoc.add_PrintPage($printHandler)
+    try {
+        $printDoc.Print()
+        $statusLabel.Text = "Comanda de teste enviada para: $($selecionada.Nome)"
+        [System.Windows.Forms.MessageBox]::Show("Comanda de teste enviada para a fila da impressora:`r`n$($selecionada.Nome)", "Teste enviado", "OK", "Information") | Out-Null
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("Falha ao enviar o teste para a impressora:`r`n$($_.Exception.Message)", "Erro de impressao", "OK", "Error") | Out-Null
+    } finally {
+        $printDoc.Dispose()
+    }
+})
+
+# Clique no botao da coluna Teste: seleciona a linha correspondente e reutiliza
+# a mesma rotina de impressao do botao principal.
+$gridImp.Add_CellContentClick({
+    param($sender, $e)
+    if ($e.RowIndex -lt 0 -or $e.ColumnIndex -lt 0) { return }
+    if ($sender.Columns[$e.ColumnIndex].Name -ne "Teste") { return }
+    if ($cmbModoImp.SelectedIndex -ne 1) { return }
+    try {
+        $linha = $sender.Rows[$e.RowIndex]
+        $colunaAlvo = $linha.Cells | Where-Object { $_.Visible -and $_.OwningColumn.Name -ne "Teste" } | Select-Object -First 1
+        if ($colunaAlvo) { $sender.CurrentCell = $colunaAlvo }
+        $sender.Rows[$e.RowIndex].Selected = $true
+        $btnTesteComandaImp.PerformClick()
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("Nao foi possivel iniciar o teste desta impressora.`r`n$($_.Exception.Message)", "Teste de impressora", "OK", "Warning") | Out-Null
+    }
+})
 
 $btnAbrirWebImp.Add_Click({
     if ($cmbModoImp.SelectedIndex -ne 1) {
