@@ -1,4 +1,4 @@
-Add-Type -AssemblyName System.Windows.Forms
+﻿Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 # ============================================================
@@ -941,10 +941,15 @@ $btnAbrirPdf.Text = "Abrir PDF do Log"
 $btnAbrirPdf.Location = New-Object System.Drawing.Point(10, 10)
 $btnAbrirPdf.Size = New-Object System.Drawing.Size(130, 28)
 
+$btnConectarFirebird = New-Object System.Windows.Forms.Button
+$btnConectarFirebird.Text = "Consultar Firebird"
+$btnConectarFirebird.Location = New-Object System.Drawing.Point(150, 10)
+$btnConectarFirebird.Size = New-Object System.Drawing.Size(130, 28)
+
 $lblArquivo = New-Object System.Windows.Forms.Label
 $lblArquivo.Text = "Nenhum arquivo carregado."
-$lblArquivo.Location = New-Object System.Drawing.Point(150, 15)
-$lblArquivo.Size = New-Object System.Drawing.Size(500, 20)
+$lblArquivo.Location = New-Object System.Drawing.Point(290, 15)
+$lblArquivo.Size = New-Object System.Drawing.Size(350, 20)
 $lblArquivo.ForeColor = [System.Drawing.Color]::DimGray
 
 $lblFiltroLog = New-Object System.Windows.Forms.Label
@@ -1069,6 +1074,7 @@ $lblRegistros.ForeColor = [System.Drawing.Color]::DimGray
 $gridRegistros = New-GridPadrao -X 10 -Y 295 -W 1280 -H 405
 
 $tabLogSistema.Controls.Add($btnAbrirPdf)
+$tabLogSistema.Controls.Add($btnConectarFirebird)
 $tabLogSistema.Controls.Add($lblArquivo)
 $tabLogSistema.Controls.Add($lblFiltroLog)
 $tabLogSistema.Controls.Add($txtFiltroLog)
@@ -1966,7 +1972,11 @@ function Atualizar-GridRegistros {
             ($_.MesaComanda  -like "*$termo*") -or
             ($_.Hora         -like "*$termo*") -or
             ($_.Descricao    -like "*$termo*") -or
-            ($_.DescricaoRaw -like "*$termo*")
+            ($_.DescricaoRaw -like "*$termo*") -or
+            ($_.Arquivo -like "*$termo*") -or
+            ($_.Modificados -like "*$termo*") -or
+            ($_.Codigo -like "*$termo*") -or
+            ($_.Historico -like "*$termo*")
         }
     }
 
@@ -2122,17 +2132,39 @@ $gridRegistros.add_CellFormatting({
     if ($e.RowIndex -lt 0 -or $e.ColumnIndex -lt 0) { return }
     $r = $gridRegistros.Rows[$e.RowIndex]
     if ($r.Cells.Count -eq 0) { return }
+
     $desc = $r.Cells["Descricao"].Value
-    if ($desc) {
-        $descStr = "$desc"
-        if (Test-ErroLog $descStr) {
-            $e.CellStyle.BackColor = [System.Drawing.Color]::FromArgb(127, 29, 29)
-            $e.CellStyle.ForeColor = [System.Drawing.Color]::FromArgb(254, 202, 202)
-        }
-        elseif (Test-SucessoLog $descStr) {
-            $e.CellStyle.BackColor = [System.Drawing.Color]::FromArgb(20, 83, 45)
-            $e.CellStyle.ForeColor = [System.Drawing.Color]::FromArgb(187, 247, 208)
-        }
+    $tipo = $r.Cells["Tipo"].Value
+    $descStr = if ($null -ne $desc) { "$desc" } else { "" }
+    $tipoStr = if ($null -ne $tipo) { "$tipo" } else { "" }
+    $textoLog = "$tipoStr $descStr"
+
+    # Mantem a prioridade das cores existentes: erro vermelho e sucesso verde.
+    if (Test-ErroLog $descStr) {
+        $e.CellStyle.BackColor = [System.Drawing.Color]::FromArgb(127, 29, 29)
+        $e.CellStyle.ForeColor = [System.Drawing.Color]::FromArgb(254, 202, 202)
+        $e.CellStyle.SelectionBackColor = [System.Drawing.Color]::FromArgb(153, 27, 27)
+        $e.CellStyle.SelectionForeColor = [System.Drawing.Color]::White
+    }
+    elseif (Test-SucessoLog $descStr) {
+        $e.CellStyle.BackColor = [System.Drawing.Color]::FromArgb(20, 83, 45)
+        $e.CellStyle.ForeColor = [System.Drawing.Color]::FromArgb(187, 247, 208)
+        $e.CellStyle.SelectionBackColor = [System.Drawing.Color]::FromArgb(22, 101, 52)
+        $e.CellStyle.SelectionForeColor = [System.Drawing.Color]::White
+    }
+    # Roxo: exclusoes/remocoes. Verifica o tipo e o texto da descricao.
+    elseif ($textoLog -match '(?i)exclu[íi]d|exclus[aã]o|deletad|delete|removid|remo[cç][aã]o|apagado|apagar|del') {
+        $e.CellStyle.BackColor = [System.Drawing.Color]::FromArgb(76, 29, 149)
+        $e.CellStyle.ForeColor = [System.Drawing.Color]::FromArgb(237, 233, 254)
+        $e.CellStyle.SelectionBackColor = [System.Drawing.Color]::FromArgb(91, 33, 182)
+        $e.CellStyle.SelectionForeColor = [System.Drawing.Color]::White
+    }
+    # Amarelo: registros do tipo Editando ou descricoes que indiquem alteracao.
+    elseif ($tipoStr -match '(?i)^Editando$' -or $textoLog -match '(?i)editad|edi[cç][aã]o|altera[cç][aã]o|alterado|atualizad|modificad') {
+        $e.CellStyle.BackColor = [System.Drawing.Color]::FromArgb(254, 240, 138)
+        $e.CellStyle.ForeColor = [System.Drawing.Color]::FromArgb(113, 63, 18)
+        $e.CellStyle.SelectionBackColor = [System.Drawing.Color]::FromArgb(234, 179, 8)
+        $e.CellStyle.SelectionForeColor = [System.Drawing.Color]::FromArgb(30, 41, 59)
     }
 })
 
@@ -2189,6 +2221,430 @@ $chkAuto.Add_CheckedChanged({
     Salvar-Config -Config $script:Config
     if ($chkAuto.Checked) { $timer.Start(); $statusLabel.Text = "Auto-atualizacao ativada." }
     else { $timer.Stop(); $statusLabel.Text = "Auto-atualizacao desativada." }
+})
+
+# --- Consulta direta ao Firebird ---
+# Dados de conexão mantidos somente na memória durante esta execução.
+# A senha nunca é gravada no MonitorConfig.json nem em outro arquivo de configuração.
+if (-not (Get-Variable -Name FirebirdSessao -Scope Script -ErrorAction SilentlyContinue)) {
+    $script:FirebirdSessao = $null
+}
+
+function Mostrar-DialogoFirebird {
+    $dlg = New-Object System.Windows.Forms.Form
+    $dlg.Text = 'Configuração da conexão Firebird'
+    $dlg.Size = New-Object System.Drawing.Size(590, 465)
+    $dlg.StartPosition = 'CenterParent'
+    $dlg.FormBorderStyle = 'FixedDialog'
+    $dlg.MaximizeBox = $false
+    $dlg.MinimizeBox = $false
+    $dlg.ShowInTaskbar = $false
+
+    $titulo = New-Object System.Windows.Forms.Label
+    $titulo.Text = 'Configurações de conexão Firebird'
+    $titulo.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
+    $titulo.Location = New-Object System.Drawing.Point(18, 15)
+    $titulo.Size = New-Object System.Drawing.Size(520, 25)
+    $dlg.Controls.Add($titulo)
+
+    $lblHost = New-Object System.Windows.Forms.Label
+    $lblHost.Text = 'Host / IP:'
+    $lblHost.Location = New-Object System.Drawing.Point(22, 60)
+    $lblHost.Size = New-Object System.Drawing.Size(100, 22)
+    $txtHost = New-Object System.Windows.Forms.TextBox
+    $txtHost.Location = New-Object System.Drawing.Point(130, 57)
+    $txtHost.Size = New-Object System.Drawing.Size(270, 24)
+    $txtHost.Text = if ($script:FirebirdSessao) { $script:FirebirdSessao.Servidor } else { 'localhost' }
+
+    $lblPorta = New-Object System.Windows.Forms.Label
+    $lblPorta.Text = 'Porta:'
+    $lblPorta.Location = New-Object System.Drawing.Point(415, 60)
+    $lblPorta.Size = New-Object System.Drawing.Size(45, 22)
+    $txtPorta = New-Object System.Windows.Forms.TextBox
+    $txtPorta.Location = New-Object System.Drawing.Point(460, 57)
+    $txtPorta.Size = New-Object System.Drawing.Size(85, 24)
+    $txtPorta.Text = if ($script:FirebirdSessao) { $script:FirebirdSessao.Porta } else { '3050' }
+
+    $lblBanco = New-Object System.Windows.Forms.Label
+    $lblBanco.Text = 'Banco / caminho:'
+    $lblBanco.Location = New-Object System.Drawing.Point(22, 105)
+    $lblBanco.Size = New-Object System.Drawing.Size(105, 22)
+    $txtBanco = New-Object System.Windows.Forms.TextBox
+    $txtBanco.Location = New-Object System.Drawing.Point(130, 102)
+    $txtBanco.Size = New-Object System.Drawing.Size(415, 24)
+    $txtBanco.Text = if ($script:FirebirdSessao) { $script:FirebirdSessao.Banco } else { 'C:\data\bitbar2\data\IBMASTER5.FDB' }
+
+    # Filtro de período: as datas são aplicadas diretamente na consulta SQL.
+    $lblDataInicial = New-Object System.Windows.Forms.Label
+    $lblDataInicial.Text = 'Data inicial:'
+    $lblDataInicial.Location = New-Object System.Drawing.Point(22, 150)
+    $lblDataInicial.Size = New-Object System.Drawing.Size(100, 22)
+    $dtpDataInicial = New-Object System.Windows.Forms.DateTimePicker
+    $dtpDataInicial.Location = New-Object System.Drawing.Point(130, 147)
+    $dtpDataInicial.Size = New-Object System.Drawing.Size(150, 24)
+    $dtpDataInicial.Format = [System.Windows.Forms.DateTimePickerFormat]::Short
+    $dtpDataInicial.Value = (Get-Date).Date
+
+    $lblDataFinal = New-Object System.Windows.Forms.Label
+    $lblDataFinal.Text = 'Data final:'
+    $lblDataFinal.Location = New-Object System.Drawing.Point(300, 150)
+    $lblDataFinal.Size = New-Object System.Drawing.Size(75, 22)
+    $dtpDataFinal = New-Object System.Windows.Forms.DateTimePicker
+    $dtpDataFinal.Location = New-Object System.Drawing.Point(380, 147)
+    $dtpDataFinal.Size = New-Object System.Drawing.Size(165, 24)
+    $dtpDataFinal.Format = [System.Windows.Forms.DateTimePickerFormat]::Short
+    $dtpDataFinal.Value = (Get-Date).Date
+
+    $linha = New-Object System.Windows.Forms.Label
+    $linha.Text = 'Autenticação (usuário/senha)'
+    $linha.Font = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
+    $linha.Location = New-Object System.Drawing.Point(22, 200)
+    $linha.Size = New-Object System.Drawing.Size(300, 22)
+
+    $lblUsuario = New-Object System.Windows.Forms.Label
+    $lblUsuario.Text = 'Usuário:'
+    $lblUsuario.Location = New-Object System.Drawing.Point(22, 235)
+    $lblUsuario.Size = New-Object System.Drawing.Size(100, 22)
+    $txtUsuario = New-Object System.Windows.Forms.TextBox
+    $txtUsuario.Location = New-Object System.Drawing.Point(130, 232)
+    $txtUsuario.Size = New-Object System.Drawing.Size(270, 24)
+    $txtUsuario.Text = if ($script:FirebirdSessao) { $script:FirebirdSessao.Usuario } else { 'SYSDBA' }
+
+    $lblSenha = New-Object System.Windows.Forms.Label
+    $lblSenha.Text = 'Senha:'
+    $lblSenha.Location = New-Object System.Drawing.Point(22, 275)
+    $lblSenha.Size = New-Object System.Drawing.Size(100, 22)
+    $txtSenha = New-Object System.Windows.Forms.TextBox
+    $txtSenha.Location = New-Object System.Drawing.Point(130, 272)
+    $txtSenha.Size = New-Object System.Drawing.Size(270, 24)
+    $txtSenha.UseSystemPasswordChar = $true
+    if ($script:FirebirdSessao -and $script:FirebirdSessao.Senha) { $txtSenha.Text = $script:FirebirdSessao.Senha }
+
+    $nota = New-Object System.Windows.Forms.Label
+    $nota.Text = 'A senha fica apenas na memória enquanto o script estiver aberto; ao fechar, ela será descartada.'
+    $nota.ForeColor = [System.Drawing.Color]::DimGray
+    $nota.Location = New-Object System.Drawing.Point(22, 315)
+    $nota.Size = New-Object System.Drawing.Size(530, 35)
+
+    $ok = New-Object System.Windows.Forms.Button
+    $ok.Text = 'Conectar e consultar período'
+    $ok.Location = New-Object System.Drawing.Point(280, 375)
+    $ok.Size = New-Object System.Drawing.Size(170, 30)
+    $ok.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $cancel = New-Object System.Windows.Forms.Button
+    $cancel.Text = 'Cancelar'
+    $cancel.Location = New-Object System.Drawing.Point(460, 375)
+    $cancel.Size = New-Object System.Drawing.Size(85, 30)
+    $cancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+
+    $dlg.Controls.AddRange(@($lblHost, $txtHost, $lblPorta, $txtPorta, $lblBanco, $txtBanco,
+        $lblDataInicial, $dtpDataInicial, $lblDataFinal, $dtpDataFinal,
+        $linha, $lblUsuario, $txtUsuario, $lblSenha, $txtSenha, $nota, $ok, $cancel))
+    $dlg.AcceptButton = $ok
+    $dlg.CancelButton = $cancel
+
+    if ($dlg.ShowDialog($form) -ne [System.Windows.Forms.DialogResult]::OK) {
+        $dlg.Dispose()
+        return $null
+    }
+
+    if ($dtpDataInicial.Value.Date -gt $dtpDataFinal.Value.Date) {
+        [System.Windows.Forms.MessageBox]::Show('A data inicial não pode ser posterior à data final.', 'Período inválido', 'OK', 'Warning') | Out-Null
+        $dlg.Dispose()
+        return $null
+    }
+
+    if ([string]::IsNullOrWhiteSpace($txtHost.Text)) {
+        [System.Windows.Forms.MessageBox]::Show('Informe o servidor ou IP do Firebird.', 'Servidor obrigatório', 'OK', 'Warning') | Out-Null
+        $dlg.Dispose()
+        return $null
+    }
+    if ([string]::IsNullOrWhiteSpace($txtBanco.Text)) {
+        [System.Windows.Forms.MessageBox]::Show('Informe o caminho/nome do banco de dados no servidor.', 'Banco obrigatório', 'OK', 'Warning') | Out-Null
+        $dlg.Dispose()
+        return $null
+    }
+
+    $resultado = @{
+        Servidor = $txtHost.Text.Trim()
+        Porta = $txtPorta.Text.Trim()
+        Banco = $txtBanco.Text.Trim()
+        Usuario = $txtUsuario.Text.Trim()
+        Senha = $txtSenha.Text
+        DataInicial = $dtpDataInicial.Value.Date
+        DataFinal = $dtpDataFinal.Value.Date
+    }
+    # Guarda os dados de conexão apenas em memória para permitir novas consultas
+    # com outras datas sem redigitar a senha. As datas são atualizadas a cada diálogo.
+    $script:FirebirdSessao = @{
+        Servidor = $resultado.Servidor
+        Porta = $resultado.Porta
+        Banco = $resultado.Banco
+        Usuario = $resultado.Usuario
+        Senha = $resultado.Senha
+    }
+    $dlg.Dispose()
+    return $resultado
+}
+
+function Consultar-LogFirebird {
+    param(
+        [hashtable]$Conexao,
+        [System.Windows.Forms.Label]$ProgressoLabel = $null
+    )
+
+    if ($ProgressoLabel) {
+        $ProgressoLabel.Text = "Preparando consulta e validando os dados..."
+        $ProgressoLabel.Refresh()
+        [System.Windows.Forms.Application]::DoEvents()
+    }
+
+    # Usa o utilitário oficial isql.exe da instalação do Firebird, sem driver .NET.
+    $candidatos = @(
+        'C:\Program Files\Firebird\Firebird_5_0\isql.exe',
+        'C:\Program Files (x86)\Firebird\Firebird_5_0\isql.exe',
+        (Join-Path $env:ProgramFiles 'Firebird\Firebird_5_0\isql.exe'),
+        (Join-Path ${env:ProgramFiles(x86)} 'Firebird\Firebird_5_0\isql.exe')
+    ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+
+    $isql = $candidatos | Select-Object -First 1
+    if (-not $isql) {
+        throw "Não encontrei isql.exe. Verifique a instalação do Firebird e informe o caminho completo do executável."
+    }
+    if ([string]::IsNullOrWhiteSpace($Conexao.Senha)) {
+        throw "Informe a senha do usuário Firebird."
+    }
+
+    # Campos são convertidos para uma linha delimitada por TAB. Tabs/quebras de linha
+    # nos valores são substituídos para evitar corromper a leitura do resultado.
+    $sql = @"
+SET BAIL ON;
+SET HEADING OFF;
+SET LIST OFF;
+SET COUNT OFF;
+SET WIDTH LINHA 32767;
+SELECT
+  REPLACE(REPLACE(REPLACE(COALESCE(CAST(ARQUIVO AS VARCHAR(500)), ''), ASCII_CHAR(9), ' '), ASCII_CHAR(10), ' '), ASCII_CHAR(13), ' ') || ASCII_CHAR(9) ||
+  COALESCE(CAST(DATA AS VARCHAR(30)), '') || ASCII_CHAR(9) ||
+  REPLACE(REPLACE(REPLACE(COALESCE(CAST(USUARIO AS VARCHAR(255)), ''), ASCII_CHAR(9), ' '), ASCII_CHAR(10), ' '), ASCII_CHAR(13), ' ') || ASCII_CHAR(9) ||
+  REPLACE(REPLACE(REPLACE(COALESCE(CAST(TIPO AS VARCHAR(255)), ''), ASCII_CHAR(9), ' '), ASCII_CHAR(10), ' '), ASCII_CHAR(13), ' ') || ASCII_CHAR(9) ||
+  REPLACE(REPLACE(REPLACE(COALESCE(CAST(COMPUTADOR AS VARCHAR(255)), ''), ASCII_CHAR(9), ' '), ASCII_CHAR(10), ' '), ASCII_CHAR(13), ' ') || ASCII_CHAR(9) ||
+  REPLACE(REPLACE(REPLACE(COALESCE(CAST(MODIFICADOS AS VARCHAR(2000)), ''), ASCII_CHAR(9), ' '), ASCII_CHAR(10), ' '), ASCII_CHAR(13), ' ') || ASCII_CHAR(9) ||
+  REPLACE(REPLACE(REPLACE(COALESCE(CAST(CODIGO AS VARCHAR(255)), ''), ASCII_CHAR(9), ' '), ASCII_CHAR(10), ' '), ASCII_CHAR(13), ' ') || ASCII_CHAR(9) ||
+  REPLACE(REPLACE(REPLACE(COALESCE(CAST(HISTORICO AS VARCHAR(12000)), ''), ASCII_CHAR(9), ' '), ASCII_CHAR(10), ' '), ASCII_CHAR(13), ' ') AS LINHA
+FROM LOG
+-- Intervalo semiaberto: inclui a data inicial e todo o dia final, inclusive horários.
+WHERE DATA >= TIMESTAMP '$($Conexao.DataInicial.ToString('yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)) 00:00:00' AND DATA < TIMESTAMP '$($Conexao.DataFinal.AddDays(1).ToString('yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)) 00:00:00'
+ORDER BY DATA;
+QUIT;
+"@
+
+    # O arquivo temporário contém a instrução CONNECT, portanto é removido em finally.
+    $tempSql = Join-Path ([System.IO.Path]::GetTempPath()) ("MonitorFB_{0}.sql" -f [guid]::NewGuid().ToString('N'))
+    $tempOut = Join-Path ([System.IO.Path]::GetTempPath()) ("MonitorFB_{0}.out" -f [guid]::NewGuid().ToString('N'))
+    $tempErr = Join-Path ([System.IO.Path]::GetTempPath()) ("MonitorFB_{0}.err" -f [guid]::NewGuid().ToString('N'))
+    $diagLog = Join-Path ([Environment]::GetFolderPath('Desktop')) 'MonitorFirebird_Diagnostico.txt'
+    $registros = New-Object System.Collections.ArrayList
+    try {
+        $fbHost = $Conexao.Servidor.Trim()
+        $porta = [int]$Conexao.Porta
+        if ($porta -lt 1 -or $porta -gt 65535) { throw 'A porta informada não é válida.' }
+        $banco = $Conexao.Banco.Trim()
+        if ([string]::IsNullOrWhiteSpace($fbHost)) {
+            throw 'Informe o servidor ou IP do Firebird. A consulta não será executada sem servidor.'
+        }
+        if ([string]::IsNullOrWhiteSpace($banco)) {
+            throw 'Informe o caminho/nome do banco de dados no servidor. A consulta não será executada sem o banco.'
+        }
+        if ([string]::IsNullOrWhiteSpace($Conexao.Usuario)) {
+            throw 'Informe o usuário do Firebird.'
+        }
+        # Escapa aspas simples na string CONNECT do isql.
+        $bancoSql = $banco.Replace("'", "''")
+        $usuarioSql = $Conexao.Usuario.Trim().Replace("'", "''")
+        $senhaSql = $Conexao.Senha.Replace("'", "''")
+        $connect = "CONNECT '$fbHost/$porta`:$bancoSql' USER '$usuarioSql' PASSWORD '$senhaSql';"
+        # A senha fica somente no arquivo temporário, que é apagado após a execução.
+        [System.IO.File]::WriteAllText($tempSql, $connect + "`r`n" + $sql, [System.Text.Encoding]::ASCII)
+        $connectSeguro = $connect -replace "PASSWORD '[^']*'", "PASSWORD '***'"
+        [System.IO.File]::WriteAllText($diagLog, "Início: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`r`nServidor: $fbHost`r`nPorta: $porta`r`nBanco: $banco`r`nPeríodo recebido: $($Conexao.DataInicial.ToString('yyyy-MM-dd')) até $($Conexao.DataFinal.ToString('yyyy-MM-dd'))`r`nExecutável: $isql`r`nSQL enviado:`r`n$connectSeguro`r`n$sql`r`n", [System.Text.Encoding]::UTF8)
+
+        if ($ProgressoLabel) {
+            $ProgressoLabel.Text = "Conectando ao Firebird e iniciando o SQL..."
+            $ProgressoLabel.Refresh()
+            [System.Windows.Forms.Application]::DoEvents()
+        }
+
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $isql
+        $psi.Arguments = '-q -i "' + $tempSql + '"'
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $proc = New-Object System.Diagnostics.Process
+        $proc.StartInfo = $psi
+        [void]$proc.Start()
+        # IMPORTANTE: drenar stdout/stderr de forma assíncrona desde o início.
+        # Se esperarmos o processo terminar antes de ler os pipes, uma consulta
+        # com muitos registros pode preencher o buffer e bloquear o isql.exe.
+        $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
+        $stderrTask = $proc.StandardError.ReadToEndAsync()
+
+        # Mantém a interface responsiva durante a consulta e aplica timeout.
+        # O timeout evita deixar a aplicação presa indefinidamente se o servidor
+        # ou a consulta não responderem.
+        $limiteEspera = [DateTime]::UtcNow.AddMinutes(3)
+        $proximaAtualizacao = [DateTime]::UtcNow.AddSeconds(2)
+        while (-not $proc.HasExited) {
+            [System.Windows.Forms.Application]::DoEvents()
+            if ($ProgressoLabel -and [DateTime]::UtcNow -ge $proximaAtualizacao) {
+                $ProgressoLabel.Text = "O Firebird ainda está executando a consulta..."
+                $ProgressoLabel.Refresh()
+                $proximaAtualizacao = [DateTime]::UtcNow.AddSeconds(2)
+            }
+            if ([DateTime]::UtcNow -ge $limiteEspera) {
+                try { $proc.Kill() } catch {}
+                throw 'A consulta ao Firebird excedeu 3 minutos e foi interrompida. Tente um período menor ou confira a conexão e o índice da coluna DATA.'
+            }
+            Start-Sleep -Milliseconds 100
+        }
+        $stdout = $stdoutTask.GetAwaiter().GetResult()
+        $stderr = $stderrTask.GetAwaiter().GetResult()
+        [System.IO.File]::WriteAllText($tempOut, $stdout, [System.Text.Encoding]::UTF8)
+        [System.IO.File]::WriteAllText($tempErr, $stderr, [System.Text.Encoding]::UTF8)
+        Add-Content -LiteralPath $diagLog -Encoding UTF8 -Value "ExitCode: $($proc.ExitCode)`r`nTamanho stdout: $($stdout.Length)`r`nTamanho stderr: $($stderr.Length)`r`n--- STDERR ---`r`n$stderr`r`n--- STDOUT (primeiros 12000 caracteres) ---`r`n$($stdout.Substring(0, [Math]::Min(12000, $stdout.Length)))`r`n--- Fim da resposta ---"
+
+        if ($ProgressoLabel) {
+            $ProgressoLabel.Text = "SQL finalizado. Interpretando a resposta recebida..."
+            $ProgressoLabel.Refresh()
+            [System.Windows.Forms.Application]::DoEvents()
+        }
+
+        if ($proc.ExitCode -ne 0 -or $stdout -match '(?im)^\s*(Statement failed|ERROR|Use CONNECT|Invalid password|Connection rejected)') {
+            $detalhe = (($stderr + "`r`n" + $stdout) -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 8) -join "`r`n"
+            if (-not $detalhe) { $detalhe = "isql.exe terminou com código $($proc.ExitCode)." }
+            throw "Falha na consulta pelo isql.exe:`r`n$detalhe"
+        }
+
+        foreach ($linha in ($stdout -split "`r?`n")) {
+            $linha = $linha.Trim()
+            if (-not $linha -or $linha -match '^(SQL>|Database:|Use CONNECT|Statement failed|Records affected|\(.*record.*\))') { continue }
+            $partes = $linha -split "`t", 8
+            if ($partes.Count -ne 8) { continue }
+            $arquivo, $dataRaw, $usuario, $tipo, $computador, $modificados, $codigo, $historico = $partes
+            $dataHora = $null
+            $dataTexto = ''
+            $horaTexto = '00:00:00'
+            if ($dataRaw) {
+                $parsed = [datetime]::MinValue
+                $formatos = @('yyyy-MM-dd HH:mm:ss.fff','yyyy-MM-dd HH:mm:ss','yyyy-MM-dd','MM/dd/yyyy HH:mm:ss','MM/dd/yyyy')
+                if ([datetime]::TryParse($dataRaw, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AssumeLocal, [ref]$parsed)) {
+                    $dataHora = $parsed
+                    $dataTexto = $parsed.ToString('dd/MM/yyyy')
+                    $horaTexto = $parsed.ToString('HH:mm:ss')
+                } else {
+                    $dataTexto = $dataRaw
+                }
+            }
+            $descricao = ((@($historico, $modificados, $codigo, $arquivo) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ' | ')
+            [void]$registros.Add([PSCustomObject]@{
+                Secao = 'Banco de dados'; Data = $dataTexto; Hora = $horaTexto
+                DataHora = if ($dataHora) { $dataHora.ToString('dd/MM/yyyy HH:mm:ss') } else { $dataTexto }
+                Usuario = $usuario; Computador = $computador; Tipo = $tipo; MesaComanda = ''
+                Descricao = $descricao; DescricaoRaw = $descricao; Payload = $null
+                Arquivo = $arquivo; Modificados = $modificados; Codigo = $codigo; Historico = $historico
+            })
+        }
+        Add-Content -LiteralPath $diagLog -Encoding UTF8 -Value "Linhas brutas: $((@($stdout -split "`r?`n")).Count)`r`nRegistros interpretados: $($registros.Count)`r`nFim: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+        if ($ProgressoLabel) {
+            $ProgressoLabel.Text = "Leitura finalizada: $($registros.Count) registro(s) interpretado(s)."
+            $ProgressoLabel.Refresh()
+            [System.Windows.Forms.Application]::DoEvents()
+        }
+        return $registros.ToArray()
+    } finally {
+        foreach ($f in @($tempSql, $tempOut, $tempErr)) {
+            if ($f -and (Test-Path $f)) { Remove-Item $f -Force -ErrorAction SilentlyContinue }
+        }
+        if ($proc) { $proc.Dispose() }
+    }
+}
+
+$btnConectarFirebird.Add_Click({
+    $dadosConexao = Mostrar-DialogoFirebird
+    if ($null -eq $dadosConexao) { return }
+    if ([string]::IsNullOrWhiteSpace($dadosConexao.Servidor)) {
+        [System.Windows.Forms.MessageBox]::Show("Informe o servidor ou IP do Firebird. A consulta não será executada sem servidor.", "Dados incompletos", "OK", "Warning") | Out-Null
+        return
+    }
+    if ([string]::IsNullOrWhiteSpace($dadosConexao.Banco)) {
+        [System.Windows.Forms.MessageBox]::Show("Informe o caminho/nome do banco de dados no servidor. A consulta não será executada sem esse caminho.", "Dados incompletos", "OK", "Warning") | Out-Null
+        return
+    }
+    if ([string]::IsNullOrWhiteSpace($dadosConexao.Usuario)) {
+        [System.Windows.Forms.MessageBox]::Show("Informe o usuário do Firebird.", "Dados incompletos", "OK", "Warning") | Out-Null
+        return
+    }
+
+    # Janela de progresso modal, com barra indeterminada enquanto o SQL é executado.
+    $progresso = New-Object System.Windows.Forms.Form
+    $progresso.Text = "Consultando Firebird"
+    $progresso.Size = New-Object System.Drawing.Size(460, 145)
+    $progresso.StartPosition = "CenterParent"
+    $progresso.FormBorderStyle = "FixedDialog"
+    $progresso.ControlBox = $false
+    $progresso.ShowInTaskbar = $false
+    $lblProgresso = New-Object System.Windows.Forms.Label
+    $lblProgresso.Text = "Conectando ao servidor e consultando o período selecionado..."
+    $lblProgresso.Location = New-Object System.Drawing.Point(18, 15)
+    $lblProgresso.Size = New-Object System.Drawing.Size(400, 35)
+    $barraProgresso = New-Object System.Windows.Forms.ProgressBar
+    $barraProgresso.Location = New-Object System.Drawing.Point(18, 48)
+    $barraProgresso.Size = New-Object System.Drawing.Size(390, 22)
+    $barraProgresso.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
+    $barraProgresso.MarqueeAnimationSpeed = 30
+    $progresso.Controls.Add($lblProgresso)
+    $progresso.Controls.Add($barraProgresso)
+    $progresso.Show($form)
+    $progresso.Refresh()
+    [System.Windows.Forms.Application]::DoEvents()
+    $statusLabel.Text = "Executando consulta SQL no servidor Firebird..."
+    $form.Refresh()
+    try {
+        $registrosBanco = @(Consultar-LogFirebird -Conexao $dadosConexao -ProgressoLabel $lblProgresso)
+        $script:LogRegistros = @($registrosBanco)
+        $script:SecaoSelecionada = "(todas)"
+        $lblArquivo.Text = "Firebird: $($dadosConexao.Servidor) — $($dadosConexao.DataInicial.ToString('dd/MM/yyyy')) a $($dadosConexao.DataFinal.ToString('dd/MM/yyyy'))"
+        Atualizar-GridSecoes
+        Atualizar-GridRegistros -Secao "(todas)"
+        $statusLabel.Text = "Consulta Firebird concluída: $($script:LogRegistros.Count) registros no período selecionado."
+        if ($script:LogRegistros.Count -eq 0) {
+            [System.Windows.Forms.MessageBox]::Show("A consulta terminou, mas nenhum registro foi interpretado.`r`nPeríodo: $($dadosConexao.DataInicial.ToString('dd/MM/yyyy')) a $($dadosConexao.DataFinal.ToString('dd/MM/yyyy')).`r`n`r`nObserve a última etapa mostrada na janela de progresso. Isso ajuda a identificar se a resposta veio vazia ou se as linhas não foram reconhecidas.", "Firebird - nenhum registro", "OK", "Warning") | Out-Null
+        } else {
+            [System.Windows.Forms.MessageBox]::Show("Consulta concluída. Registros encontrados no período: $($script:LogRegistros.Count).", "Firebird", "OK", "Information") | Out-Null
+        }
+    } catch {
+        try { Add-Content -LiteralPath (Join-Path ([Environment]::GetFolderPath('Desktop')) 'MonitorFirebird_Diagnostico.txt') -Encoding UTF8 -Value "ERRO: $($_.Exception.Message)`r`nLinha: $($_.InvocationInfo.ScriptLineNumber)`r`n$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" } catch {}
+        $detalheErro = $_.Exception.Message
+        if ($_.InvocationInfo -and $_.InvocationInfo.ScriptLineNumber) {
+            $detalheErro += "`r`n`r`nLinha: $($_.InvocationInfo.ScriptLineNumber)"
+        }
+        # Mostra a causa no rodapé também, para facilitar o diagnóstico sem depender
+        # apenas da janela de erro. A consulta e o intervalo selecionado ficam explícitos.
+        $dataIniDiag = if ($dadosConexao -and $dadosConexao.DataInicial) { $dadosConexao.DataInicial.ToString('dd/MM/yyyy') } else { '?' }
+        $dataFimDiag = if ($dadosConexao -and $dadosConexao.DataFinal) { $dadosConexao.DataFinal.ToString('dd/MM/yyyy') } else { '?' }
+        $statusLabel.Text = "Falha Firebird ($dataIniDiag a $dataFimDiag): $($_.Exception.Message)"
+        [System.Windows.Forms.MessageBox]::Show("Não foi possível consultar o Firebird.`r`nPeríodo: $dataIniDiag a $dataFimDiag`r`n`r`n$detalheErro", "Erro Firebird", "OK", "Error") | Out-Null
+    } finally {
+        if ($progresso) {
+            $progresso.Close()
+            $progresso.Dispose()
+        }
+        # A senha permanece apenas na memória da sessão para permitir outra consulta.
+        # Ela é descartada no fechamento do formulário principal.
+        $dadosConexao = $null
+    }
 })
 
 # --- Abrir PDF ---
@@ -2444,6 +2900,10 @@ if ($chkAuto.Checked) { $timer.Start() }
 
 $form.Add_FormClosing({
     $timer.Stop()
+    if ($script:FirebirdSessao) {
+        $script:FirebirdSessao.Senha = $null
+        $script:FirebirdSessao = $null
+    }
 })
 
 if ($sidebar.Controls.Count -gt 3) {
