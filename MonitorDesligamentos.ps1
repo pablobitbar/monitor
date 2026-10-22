@@ -1,4 +1,4 @@
-Add-Type -AssemblyName System.Windows.Forms
+﻿Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 # ============================================================
@@ -1103,6 +1103,236 @@ $tabs.Controls.Add($tabDesligamentos)
 $tabs.Controls.Add($tabCredenciais)
 $tabs.Controls.Add($tabImpressoras)
 $tabs.Controls.Add($tabLogSistema)
+# ============================================================
+#  ABA 5 - DIAGNOSTICO DE REDE (Windows nativo / sem instalacao)
+# ============================================================
+$tabRede = New-Object System.Windows.Forms.TabPage
+$tabRede.Text = "Diagnostico de Rede"
+$tabRede.BackColor = [System.Drawing.Color]::White
+
+$lblRedeDestino = New-Object System.Windows.Forms.Label
+$lblRedeDestino.Text = "IP para monitorar (roteador, servidor ou PDV):"
+$lblRedeDestino.Location = New-Object System.Drawing.Point(14, 16)
+$lblRedeDestino.Size = New-Object System.Drawing.Size(290, 22)
+
+$txtRedeDestino = New-Object System.Windows.Forms.TextBox
+$txtRedeDestino.Location = New-Object System.Drawing.Point(305, 13)
+$txtRedeDestino.Size = New-Object System.Drawing.Size(150, 25)
+$txtRedeDestino.Text = ""
+$txtRedeDestino.Anchor = "Top,Left"
+
+$btnRedeIniciar = New-Object System.Windows.Forms.Button
+$btnRedeIniciar.Text = "Iniciar monitoramento"
+$btnRedeIniciar.Location = New-Object System.Drawing.Point(470, 11)
+$btnRedeIniciar.Size = New-Object System.Drawing.Size(150, 29)
+
+$btnRedeParar = New-Object System.Windows.Forms.Button
+$btnRedeParar.Text = "Parar"
+$btnRedeParar.Location = New-Object System.Drawing.Point(628, 11)
+$btnRedeParar.Size = New-Object System.Drawing.Size(80, 29)
+$btnRedeParar.Enabled = $false
+
+$btnRedeExportar = New-Object System.Windows.Forms.Button
+$btnRedeExportar.Text = "Exportar CSV"
+$btnRedeExportar.Location = New-Object System.Drawing.Point(716, 11)
+$btnRedeExportar.Size = New-Object System.Drawing.Size(105, 29)
+
+$lblRedeServidor = New-Object System.Windows.Forms.Label
+$lblRedeServidor.Text = "Este computador: identificando..."
+$lblRedeServidor.Location = New-Object System.Drawing.Point(14, 48)
+$lblRedeServidor.Size = New-Object System.Drawing.Size(450, 22)
+
+$lblRedeEstado = New-Object System.Windows.Forms.Label
+$lblRedeEstado.Text = "Monitoramento parado"
+$lblRedeEstado.Location = New-Object System.Drawing.Point(470, 48)
+$lblRedeEstado.Size = New-Object System.Drawing.Size(450, 22)
+
+$lblRedeResumo = New-Object System.Windows.Forms.Label
+$lblRedeResumo.Text = "Aguardando teste. Intervalo: 2 segundos."
+$lblRedeResumo.Location = New-Object System.Drawing.Point(14, 75)
+$lblRedeResumo.Size = New-Object System.Drawing.Size(900, 22)
+
+$gridRede = New-GridPadrao -X 14 -Y 105 -W 1190 -H 560
+$gridRede.Anchor = "Top,Bottom,Left,Right"
+[void]$gridRede.Columns.Add("Hora", "Horário")
+[void]$gridRede.Columns.Add("Destino", "Destino")
+[void]$gridRede.Columns.Add("IP", "IP")
+[void]$gridRede.Columns.Add("Latencia", "Latência (ms)")
+[void]$gridRede.Columns.Add("Status", "Resultado")
+[void]$gridRede.Columns.Add("Perda", "Perda acumulada")
+$gridRede.Columns["Hora"].Width = 150
+$gridRede.Columns["Destino"].Width = 170
+$gridRede.Columns["IP"].Width = 150
+$gridRede.Columns["Latencia"].Width = 120
+$gridRede.Columns["Status"].Width = 300
+$gridRede.Columns["Perda"].Width = 140
+
+foreach ($c in @($lblRedeDestino, $lblRedeServidor, $lblRedeEstado, $lblRedeResumo)) {
+    $c.ForeColor = [System.Drawing.Color]::FromArgb(226, 232, 240)
+}
+$tabRede.Controls.Add($lblRedeDestino)
+$tabRede.Controls.Add($txtRedeDestino)
+$tabRede.Controls.Add($btnRedeIniciar)
+$tabRede.Controls.Add($btnRedeParar)
+$tabRede.Controls.Add($btnRedeExportar)
+$tabRede.Controls.Add($lblRedeServidor)
+$tabRede.Controls.Add($lblRedeEstado)
+$tabRede.Controls.Add($lblRedeResumo)
+$tabRede.Controls.Add($gridRede)
+
+# Adiciona a aba somente depois de criar o TabPage e seus controles.
+$tabs.Controls.Add($tabRede)
+
+# ============================================================
+#  ABA 6 - REPARADOR DE CAMINHO E ADMINISTRACAO REMOTA
+# ============================================================
+$tabAdminRede = New-Object System.Windows.Forms.TabPage
+$tabAdminRede.Text = "Reparador / Remoting"
+$tabAdminRede.BackColor = [System.Drawing.Color]::White
+
+$lblAdminTitulo = New-Object System.Windows.Forms.Label
+$lblAdminTitulo.Text = "Reparar acesso ao servidor e administrar PowerShell Remoting"
+$lblAdminTitulo.Location = New-Object System.Drawing.Point(16, 14)
+$lblAdminTitulo.Size = New-Object System.Drawing.Size(850, 26)
+$lblAdminTitulo.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 12, [System.Drawing.FontStyle]::Bold)
+
+$lblSrvDestino = New-Object System.Windows.Forms.Label
+$lblSrvDestino.Text = "Hostname/IP do servidor ou PC remoto:"
+$lblSrvDestino.Location = New-Object System.Drawing.Point(16, 52)
+$lblSrvDestino.Size = New-Object System.Drawing.Size(190, 22)
+$txtSrvDestino = New-Object System.Windows.Forms.TextBox
+$txtSrvDestino.Location = New-Object System.Drawing.Point(210, 49)
+$txtSrvDestino.Size = New-Object System.Drawing.Size(230, 25)
+
+$lblCompartilhamento = New-Object System.Windows.Forms.Label
+$lblCompartilhamento.Text = "Compartilhamento:"
+$lblCompartilhamento.Location = New-Object System.Drawing.Point(460, 52)
+$lblCompartilhamento.Size = New-Object System.Drawing.Size(125, 22)
+$txtCompartilhamento = New-Object System.Windows.Forms.TextBox
+$txtCompartilhamento.Location = New-Object System.Drawing.Point(585, 49)
+$txtCompartilhamento.Size = New-Object System.Drawing.Size(130, 25)
+$txtCompartilhamento.Text = "data"
+$btnResolverServidor = New-Object System.Windows.Forms.Button
+$btnResolverServidor.Text = "Resolver nome"
+$btnResolverServidor.Location = New-Object System.Drawing.Point(725, 47)
+$btnResolverServidor.Size = New-Object System.Drawing.Size(125, 28)
+
+$lblCaminhoUNC = New-Object System.Windows.Forms.Label
+$lblCaminhoUNC.Text = "Caminho UNC: informe o servidor e o compartilhamento."
+$lblCaminhoUNC.Location = New-Object System.Drawing.Point(16, 82)
+$lblCaminhoUNC.Size = New-Object System.Drawing.Size(850, 22)
+
+$btnTestarPasta = New-Object System.Windows.Forms.Button
+$btnTestarPasta.Text = "Testar compartilhamento"
+$btnTestarPasta.Location = New-Object System.Drawing.Point(16, 112)
+$btnTestarPasta.Size = New-Object System.Drawing.Size(170, 32)
+$btnAbrirPasta = New-Object System.Windows.Forms.Button
+$btnAbrirPasta.Text = "Abrir pasta"
+$btnAbrirPasta.Location = New-Object System.Drawing.Point(194, 112)
+$btnAbrirPasta.Size = New-Object System.Drawing.Size(105, 32)
+$btnCopiarUNC = New-Object System.Windows.Forms.Button
+$btnCopiarUNC.Text = "Copiar caminho"
+$btnCopiarUNC.Location = New-Object System.Drawing.Point(307, 112)
+$btnCopiarUNC.Size = New-Object System.Drawing.Size(125, 32)
+$btnConectarPasta = New-Object System.Windows.Forms.Button
+$btnConectarPasta.Text = "Conectar com credenciais"
+$btnConectarPasta.Location = New-Object System.Drawing.Point(440, 112)
+$btnConectarPasta.Size = New-Object System.Drawing.Size(190, 32)
+$lblUnidade = New-Object System.Windows.Forms.Label
+$lblUnidade.Text = "Unidade:"
+$lblUnidade.Location = New-Object System.Drawing.Point(646, 118)
+$lblUnidade.Size = New-Object System.Drawing.Size(60, 22)
+$txtUnidade = New-Object System.Windows.Forms.TextBox
+$txtUnidade.Location = New-Object System.Drawing.Point(706, 115)
+$txtUnidade.Size = New-Object System.Drawing.Size(45, 25)
+$txtUnidade.Text = "Z:"
+
+$sepAdmin = New-Object System.Windows.Forms.Label
+$sepAdmin.BorderStyle = [System.Windows.Forms.BorderStyle]::Fixed3D
+$sepAdmin.Location = New-Object System.Drawing.Point(16, 158)
+$sepAdmin.Size = New-Object System.Drawing.Size(900, 2)
+
+$lblRemotingTitulo = New-Object System.Windows.Forms.Label
+$lblRemotingTitulo.Text = "PowerShell Remoting (WinRM)"
+$lblRemotingTitulo.Location = New-Object System.Drawing.Point(16, 174)
+$lblRemotingTitulo.Size = New-Object System.Drawing.Size(500, 24)
+$lblRemotingTitulo.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Bold)
+$lblRemotingInfo = New-Object System.Windows.Forms.Label
+$lblRemotingInfo.Text = "Para habilitar remotamente, o destino precisa aceitar um canal administrativo. Se WinRM estiver desligado, execute a preparacao no proprio destino ou use uma ferramenta administrativa ja autorizada."
+$lblRemotingInfo.Location = New-Object System.Drawing.Point(16, 202)
+$lblRemotingInfo.Size = New-Object System.Drawing.Size(900, 42)
+$lblRemotingInfo.AutoSize = $false
+
+$btnTestarWinRM = New-Object System.Windows.Forms.Button
+$btnTestarWinRM.Text = "Testar WinRM remoto"
+$btnTestarWinRM.Location = New-Object System.Drawing.Point(16, 252)
+$btnTestarWinRM.Size = New-Object System.Drawing.Size(160, 32)
+$btnPrepararRemoto = New-Object System.Windows.Forms.Button
+$btnPrepararRemoto.Text = "Habilitar no destino"
+$btnPrepararRemoto.Location = New-Object System.Drawing.Point(184, 252)
+$btnPrepararRemoto.Size = New-Object System.Drawing.Size(155, 32)
+$btnTrustedHost = New-Object System.Windows.Forms.Button
+$btnTrustedHost.Text = "Confiar neste destino"
+$btnTrustedHost.Location = New-Object System.Drawing.Point(347, 252)
+$btnTrustedHost.Size = New-Object System.Drawing.Size(165, 32)
+$btnPrepararLocal = New-Object System.Windows.Forms.Button
+$btnPrepararLocal.Text = "Habilitar neste PC"
+$btnPrepararLocal.Location = New-Object System.Drawing.Point(520, 252)
+$btnPrepararLocal.Size = New-Object System.Drawing.Size(150, 32)
+$btnCopiarPreparacao = New-Object System.Windows.Forms.Button
+$btnCopiarPreparacao.Text = "Copiar comando de preparacao"
+$btnCopiarPreparacao.Location = New-Object System.Drawing.Point(678, 252)
+$btnCopiarPreparacao.Size = New-Object System.Drawing.Size(220, 32)
+
+$lblAdminAcoes = New-Object System.Windows.Forms.Label
+$lblAdminAcoes.Text = "Acoes remotas no computador selecionado"
+$lblAdminAcoes.Location = New-Object System.Drawing.Point(16, 300)
+$lblAdminAcoes.Size = New-Object System.Drawing.Size(500, 22)
+$lblAdminAcoes.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 10, [System.Drawing.FontStyle]::Bold)
+$btnDesligarRemoto = New-Object System.Windows.Forms.Button
+$btnDesligarRemoto.Text = "Desligar PC"
+$btnDesligarRemoto.Location = New-Object System.Drawing.Point(16, 326)
+$btnDesligarRemoto.Size = New-Object System.Drawing.Size(130, 32)
+$btnReiniciarRemoto = New-Object System.Windows.Forms.Button
+$btnReiniciarRemoto.Text = "Reiniciar PC"
+$btnReiniciarRemoto.Location = New-Object System.Drawing.Point(154, 326)
+$btnReiniciarRemoto.Size = New-Object System.Drawing.Size(130, 32)
+$btnRenovarIPRemoto = New-Object System.Windows.Forms.Button
+$btnRenovarIPRemoto.Text = "Renovar IP"
+$btnRenovarIPRemoto.Location = New-Object System.Drawing.Point(292, 326)
+$btnRenovarIPRemoto.Size = New-Object System.Drawing.Size(130, 32)
+$lblAdminAcoesInfo = New-Object System.Windows.Forms.Label
+$lblAdminAcoesInfo.Text = "As acoes exigem WinRM ativo e uma conta autorizada. Renovar o IP pode interromper a sessao remota temporariamente."
+$lblAdminAcoesInfo.Location = New-Object System.Drawing.Point(16, 363)
+$lblAdminAcoesInfo.Size = New-Object System.Drawing.Size(900, 34)
+$lblAdminAcoesInfo.AutoSize = $false
+
+$lblAdminLog = New-Object System.Windows.Forms.Label
+$lblAdminLog.Text = "Log de operacoes"
+$lblAdminLog.Location = New-Object System.Drawing.Point(16, 402)
+$lblAdminLog.Size = New-Object System.Drawing.Size(300, 22)
+$txtAdminLog = New-Object System.Windows.Forms.TextBox
+$txtAdminLog.Location = New-Object System.Drawing.Point(16, 426)
+$txtAdminLog.Size = New-Object System.Drawing.Size(900, 218)
+$txtAdminLog.Multiline = $true
+$txtAdminLog.ReadOnly = $true
+$txtAdminLog.ScrollBars = "Vertical"
+$txtAdminLog.WordWrap = $false
+$txtAdminLog.Anchor = "Top,Bottom,Left,Right"
+
+foreach ($ctrl in @($lblAdminTitulo,$lblSrvDestino,$lblCompartilhamento,$lblCaminhoUNC,$lblUnidade,$lblRemotingTitulo,$lblRemotingInfo,$lblAdminAcoes,$lblAdminAcoesInfo,$lblAdminLog)) {
+    $ctrl.ForeColor = [System.Drawing.Color]::FromArgb(226, 232, 240)
+}
+foreach ($ctrl in @($btnResolverServidor,$btnTestarPasta,$btnAbrirPasta,$btnCopiarUNC,$btnConectarPasta,$btnTestarWinRM,$btnPrepararRemoto,$btnTrustedHost,$btnPrepararLocal,$btnCopiarPreparacao,$btnDesligarRemoto,$btnReiniciarRemoto,$btnRenovarIPRemoto)) {
+    $ctrl.FlatStyle = "Flat"
+}
+$tabAdminRede.Controls.AddRange([System.Windows.Forms.Control[]]@(
+    $lblAdminTitulo,$lblSrvDestino,$txtSrvDestino,$lblCompartilhamento,$txtCompartilhamento,$btnResolverServidor,$lblCaminhoUNC,
+    $btnTestarPasta,$btnAbrirPasta,$btnCopiarUNC,$btnConectarPasta,$lblUnidade,$txtUnidade,$sepAdmin,
+    $lblRemotingTitulo,$lblRemotingInfo,$btnTestarWinRM,$btnPrepararRemoto,$btnTrustedHost,$btnPrepararLocal,
+    $btnCopiarPreparacao,$lblAdminAcoes,$btnDesligarRemoto,$btnReiniciarRemoto,$btnRenovarIPRemoto,$lblAdminAcoesInfo,$lblAdminLog,$txtAdminLog
+))
+$tabs.Controls.Add($tabAdminRede)
 
 # ============================================================
 #  STATUS BAR
@@ -1163,7 +1393,9 @@ $navItems = @(
     @{ Text = "  Desligamentos"; Index = 0 },
     @{ Text = "  Credenciais de Rede"; Index = 1 },
     @{ Text = "  Impressoras"; Index = 2 },
-    @{ Text = "  Log do Sistema / PDF"; Index = 3 }
+    @{ Text = "  Log do Sistema / PDF"; Index = 3 },
+    @{ Text = "  Diagnostico de Rede"; Index = 4 },
+    @{ Text = "  Reparar / Remoting"; Index = 5 }
 )
 $navY = 162
 foreach ($item in $navItems) {
@@ -1242,11 +1474,11 @@ $panelBack = [System.Drawing.Color]::FromArgb(20, 30, 49)
 $textColor = [System.Drawing.Color]::FromArgb(226, 232, 240)
 $mutedColor = [System.Drawing.Color]::FromArgb(148, 163, 184)
 $accentColor = [System.Drawing.Color]::FromArgb(37, 99, 235)
-foreach ($page in @($tabDesligamentos, $tabCredenciais, $tabImpressoras, $tabLogSistema)) {
+foreach ($page in @($tabDesligamentos, $tabCredenciais, $tabImpressoras, $tabLogSistema, $tabRede, $tabAdminRede)) {
     $page.BackColor = $darkBack
     $page.ForeColor = $textColor
 }
-foreach ($grid in @($gridDesl, $gridCred, $gridImp, $gridSecoes, $gridRegistros)) {
+foreach ($grid in @($gridDesl, $gridCred, $gridImp, $gridSecoes, $gridRegistros, $gridRede)) {
     if ($null -ne $grid) {
         $grid.BackgroundColor = $panelBack
         $grid.BorderStyle = "None"
@@ -1262,7 +1494,7 @@ foreach ($grid in @($gridDesl, $gridCred, $gridImp, $gridSecoes, $gridRegistros)
         $grid.RowHeadersVisible = $false
     }
 }
-foreach ($page in @($tabDesligamentos, $tabCredenciais, $tabImpressoras, $tabLogSistema)) {
+foreach ($page in @($tabDesligamentos, $tabCredenciais, $tabImpressoras, $tabLogSistema, $tabRede, $tabAdminRede)) {
     foreach ($control in $page.Controls) {
         if ($control -is [System.Windows.Forms.Label]) {
             $control.ForeColor = $textColor
@@ -2893,6 +3125,492 @@ $btnLimparFiltrosLog.Add_Click({
     Atualizar-GridRegistros -Secao "(todas)"
 })
 
+
+# ============================================================
+#  MONITOR DE REDE - ping continuo usando recursos do Windows
+#  Observacao: mede conectividade/latencia ate o IP escolhido.
+#  Nao mede diretamente sinal Wi-Fi nem trafego individual por aparelho.
+# ============================================================
+$script:RedeHistorico = New-Object System.Collections.ArrayList
+$script:RedeSucessos = 0
+$script:RedeFalhas = 0
+$script:RedeTimer = New-Object System.Windows.Forms.Timer
+$script:RedeTimer.Interval = 2000
+
+function Obter-InfoRedeLocal {
+    # Lista os IPv4 das interfaces fisicas ativas (Ethernet e Wi-Fi), sem depender
+    # exclusivamente da interface cabeada. Usa comandos nativos do Windows.
+    $opcoes = @()
+    try {
+        $configs = @(Get-NetIPConfiguration -ErrorAction Stop | Where-Object { $_.NetAdapter.Status -eq 'Up' })
+        foreach ($cfg in $configs) {
+            $alias = [string]$cfg.InterfaceAlias
+            # Evita adaptadores virtuais/VPN quando houver interfaces fisicas disponiveis.
+            $ips = @($cfg.IPv4Address | ForEach-Object { [string]$_.IPAddress } | Where-Object {
+                $_ -match '^\d{1,3}(\.\d{1,3}){3}$' -and $_ -notmatch '^(127|169\.254)\.' -and
+                $_ -match '^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)'
+            })
+            if (-not $ips.Count) { continue }
+            $gw = [string](@($cfg.IPv4DefaultGateway | ForEach-Object { $_.NextHop } | Where-Object { $_ -match '^\d{1,3}(\.\d{1,3}){3}$' } | Select-Object -First 1))
+            $tipo = if ($alias -match 'Wi-?Fi|Wireless|WLAN') { 'Wi-Fi' } elseif ($alias -match 'Ethernet|Rede') { 'Ethernet' } else { $alias }
+            $prioridade = 0
+            if ($gw) { $prioridade += 4 }
+            if ($tipo -eq 'Ethernet') { $prioridade += 1 }
+            $opcoes += [PSCustomObject]@{ IP = $ips[0]; Gateway = $gw; Interface = $tipo; Prioridade = $prioridade }
+        }
+    } catch { }
+
+    # Fallback para Windows onde Get-NetIPConfiguration nao estiver disponivel.
+    if (-not $opcoes.Count) {
+        try {
+            $adaptadores = @(Get-CimInstance Win32_NetworkAdapterConfiguration -Filter "IPEnabled = True" -ErrorAction Stop)
+            foreach ($cfg in $adaptadores) {
+                $ips = @($cfg.IPAddress | Where-Object { $_ -match '^\d{1,3}(\.\d{1,3}){3}$' -and $_ -notmatch '^(127|169\.254)\.' -and $_ -match '^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)' })
+                if (-not $ips.Count) { continue }
+                $gw = [string](@($cfg.DefaultIPGateway | Where-Object { $_ -match '^\d{1,3}(\.\d{1,3}){3}$' } | Select-Object -First 1))
+                $tipo = if ($cfg.Description -match 'Wi-?Fi|Wireless|WLAN') { 'Wi-Fi' } elseif ($cfg.Description -match 'Ethernet') { 'Ethernet' } else { [string]$cfg.Description }
+                $prioridade = [int](($gw -ne '') * 4 + ($tipo -eq 'Ethernet'))
+                $opcoes += [PSCustomObject]@{ IP = $ips[0]; Gateway = $gw; Interface = $tipo; Prioridade = $prioridade }
+            }
+        } catch { }
+    }
+
+    if ($opcoes.Count) {
+        $melhor = $opcoes | Sort-Object Prioridade -Descending | Select-Object -First 1
+        $resumoIPs = (($opcoes | Sort-Object Interface -Unique | ForEach-Object { "$($_.Interface): $($_.IP)" }) -join '  |  ')
+        return [PSCustomObject]@{ IP = $melhor.IP; Gateway = $melhor.Gateway; Nome = $env:COMPUTERNAME; ListaIPs = $resumoIPs }
+    }
+    return [PSCustomObject]@{ IP = 'Indisponivel'; Gateway = ''; Nome = $env:COMPUTERNAME; ListaIPs = 'Nenhuma interface LAN ativa identificada' }
+}
+
+$script:RedeLocal = Obter-InfoRedeLocal
+$lblRedeServidor.Text = "Computador: $($script:RedeLocal.Nome)  |  $($script:RedeLocal.ListaIPs)"
+$lblRedeServidor.Size = New-Object System.Drawing.Size(900, 22)
+if ([string]::IsNullOrWhiteSpace($txtRedeDestino.Text) -and $script:RedeLocal.Gateway) {
+    $txtRedeDestino.Text = $script:RedeLocal.Gateway
+}
+
+function Adicionar-ResultadoRede {
+    param(
+        [string]$Destino,
+        [string]$IP,
+        [string]$Latencia,
+        [string]$Resultado,
+        [string]$Perda
+    )
+    $agora = Get-Date
+    $linha = [PSCustomObject]@{
+        DataHora = $agora.ToString("yyyy-MM-dd HH:mm:ss")
+        Destino = $Destino
+        IP = $IP
+        LatenciaMs = $Latencia
+        Resultado = $Resultado
+        PerdaAcumulada = $Perda
+    }
+    [void]$script:RedeHistorico.Add($linha)
+    $idx = $gridRede.Rows.Add($agora.ToString("HH:mm:ss"), $Destino, $IP, $Latencia, $Resultado, $Perda)
+    $row = $gridRede.Rows[$idx]
+    if ($Resultado -eq "Sem resposta / timeout") {
+        $row.DefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(127, 29, 29)
+        $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::White
+    } elseif ($Latencia -match '^\d+$' -and [int]$Latencia -ge 100) {
+        $row.DefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(120, 53, 15)
+        $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::White
+    } else {
+        $row.DefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(20, 30, 49)
+        $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::FromArgb(226, 232, 240)
+    }
+    if ($gridRede.Rows.Count -gt 500) { $gridRede.Rows.RemoveAt(0) }
+    if ($gridRede.Rows.Count -gt 0) {
+        $gridRede.FirstDisplayedScrollingRowIndex = $gridRede.Rows.Count - 1
+    }
+}
+
+$script:RedeTimer.Add_Tick({
+    $destino = $txtRedeDestino.Text.Trim()
+    if ([string]::IsNullOrWhiteSpace($destino)) {
+        $lblRedeEstado.Text = "Informe um IP valido para monitorar."
+        return
+    }
+    try {
+        $ipObj = $null
+        if (-not [System.Net.IPAddress]::TryParse($destino, [ref]$ipObj)) {
+            $lblRedeEstado.Text = "Informe um endereco IPv4 valido."
+            return
+        }
+        $ping = New-Object System.Net.NetworkInformation.Ping
+        try {
+            $reply = $ping.Send($ipObj, 900)
+        } finally {
+            $ping.Dispose()
+        }
+        if ($reply.Status -eq [System.Net.NetworkInformation.IPStatus]::Success) {
+            $script:RedeSucessos++
+            $lat = [int]$reply.RoundtripTime
+            $total = $script:RedeSucessos + $script:RedeFalhas
+            $perda = [math]::Round(($script:RedeFalhas / [double]$total) * 100, 1)
+            $lblRedeEstado.Text = "Respondendo | Latencia: $lat ms"
+            $lblRedeEstado.ForeColor = if ($lat -ge 100) { [System.Drawing.Color]::FromArgb(251, 191, 36) } else { [System.Drawing.Color]::FromArgb(74, 222, 128) }
+            Adicionar-ResultadoRede -Destino $destino -IP $reply.Address.ToString() -Latencia "$lat" -Resultado "OK" -Perda "$perda%"
+        } else {
+            $script:RedeFalhas++
+            $total = $script:RedeSucessos + $script:RedeFalhas
+            $perda = [math]::Round(($script:RedeFalhas / [double]$total) * 100, 1)
+            $lblRedeEstado.Text = "Sem resposta: $($reply.Status)"
+            $lblRedeEstado.ForeColor = [System.Drawing.Color]::FromArgb(248, 113, 113)
+            Adicionar-ResultadoRede -Destino $destino -IP $destino -Latencia "-" -Resultado "Sem resposta / timeout" -Perda "$perda%"
+        }
+        $total = $script:RedeSucessos + $script:RedeFalhas
+        $perdaTotal = if ($total -gt 0) { [math]::Round(($script:RedeFalhas / [double]$total) * 100, 1) } else { 0 }
+        $media = if ($script:RedeSucessos -gt 0) {
+            $vals = @($script:RedeHistorico | Where-Object { $_.Resultado -eq "OK" -and $_.LatenciaMs -match '^\d+$' } | Select-Object -Last 50 | ForEach-Object { [double]$_.LatenciaMs })
+            if ($vals.Count -gt 0) { [math]::Round(($vals | Measure-Object -Average).Average, 1) } else { 0 }
+        } else { 0 }
+        $lblRedeResumo.Text = "Amostras: $total  |  Sucessos: $script:RedeSucessos  |  Falhas: $script:RedeFalhas  |  Perda acumulada: $perdaTotal%  |  Media recente: $media ms"
+    } catch {
+        $lblRedeEstado.Text = "Erro no teste: $($_.Exception.Message)"
+        $lblRedeEstado.ForeColor = [System.Drawing.Color]::FromArgb(248, 113, 113)
+    }
+})
+
+$btnRedeIniciar.Add_Click({
+    $destino = $txtRedeDestino.Text.Trim()
+    $ipTeste = $null
+    if (-not [System.Net.IPAddress]::TryParse($destino, [ref]$ipTeste)) {
+        [System.Windows.Forms.MessageBox]::Show("Informe um IPv4 valido, por exemplo 192.168.1.1.", "Diagnostico de Rede", "OK", "Warning") | Out-Null
+        return
+    }
+    # Cada monitoramento começa uma sessão limpa, sem misturar resultados de outro IP.
+    $script:RedeTimer.Stop()
+    $script:RedeSucessos = 0
+    $script:RedeFalhas = 0
+    $script:RedeHistorico.Clear()
+    $gridRede.Rows.Clear()
+    $lblRedeResumo.Text = "Aguardando primeiras amostras. Intervalo: 2 segundos."
+    $lblRedeEstado.Text = "Monitoramento ativo: $destino"
+    $lblRedeEstado.ForeColor = [System.Drawing.Color]::FromArgb(74, 222, 128)
+    $btnRedeIniciar.Enabled = $false
+    $btnRedeParar.Enabled = $true
+    $txtRedeDestino.Enabled = $false
+    $script:RedeTimer.Start()
+})
+
+$btnRedeParar.Add_Click({
+    $script:RedeTimer.Stop()
+    $btnRedeIniciar.Enabled = $true
+    $btnRedeParar.Enabled = $false
+    $txtRedeDestino.Enabled = $true
+    $lblRedeEstado.Text = "Monitoramento parado"
+    $lblRedeEstado.ForeColor = [System.Drawing.Color]::FromArgb(148, 163, 184)
+})
+
+$btnRedeExportar.Add_Click({
+    if ($script:RedeHistorico.Count -eq 0) {
+        [System.Windows.Forms.MessageBox]::Show("Ainda nao existem amostras para exportar.", "Diagnostico de Rede", "OK", "Information") | Out-Null
+        return
+    }
+    $dlgCsv = New-Object System.Windows.Forms.SaveFileDialog
+    $dlgCsv.Filter = "CSV (*.csv)|*.csv"
+    $dlgCsv.FileName = "DiagnosticoRede_$(Get-Date -Format 'yyyyMMdd_HHmmss').csv"
+    if ($dlgCsv.ShowDialog($form) -eq [System.Windows.Forms.DialogResult]::OK) {
+        try {
+            $script:RedeHistorico | Export-Csv -Path $dlgCsv.FileName -NoTypeInformation -Encoding UTF8 -Delimiter ';'
+            [System.Windows.Forms.MessageBox]::Show("Historico exportado com sucesso.", "Diagnostico de Rede", "OK", "Information") | Out-Null
+        } catch {
+            [System.Windows.Forms.MessageBox]::Show("Falha ao exportar: $($_.Exception.Message)", "Diagnostico de Rede", "OK", "Error") | Out-Null
+        }
+    }
+    $dlgCsv.Dispose()
+})
+
+# ============================================================
+#  EVENTOS - REPARADOR DE CAMINHO / POWERSHELL REMOTING
+# ============================================================
+$script:AdminRedeConfigPath = Join-Path $script:BaseDir "AdminRedeConfig.json"
+try {
+    if (Test-Path $script:AdminRedeConfigPath) {
+        $cfgAdminRede = Get-Content -LiteralPath $script:AdminRedeConfigPath -Raw | ConvertFrom-Json
+        if ($cfgAdminRede.Servidor) { $txtSrvDestino.Text = [string]$cfgAdminRede.Servidor }
+        if ($cfgAdminRede.Compartilhamento) { $txtCompartilhamento.Text = [string]$cfgAdminRede.Compartilhamento }
+    }
+} catch { }
+
+function Escrever-LogAdminRede {
+    param([string]$Mensagem)
+    $linha = "[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $Mensagem
+    if ($txtAdminLog.IsHandleCreated) {
+        $txtAdminLog.AppendText($linha + [Environment]::NewLine)
+    } else {
+        $txtAdminLog.Text += $linha + [Environment]::NewLine
+    }
+}
+
+function Obter-CaminhoCompartilhamento {
+    $servidor = $txtSrvDestino.Text.Trim()
+    $share = $txtCompartilhamento.Text.Trim().Trim([char[]]@([char]92, [char]47))
+    if ([string]::IsNullOrWhiteSpace($servidor)) { throw "Informe o hostname ou IP do servidor." }
+    if ([string]::IsNullOrWhiteSpace($share) -or $share -match '[\\/:*?"<>|]') { throw "Nome de compartilhamento invalido." }
+    if ($servidor -match '[\\/:*?"<>| ]') { throw "Informe apenas hostname ou IP, sem barras ou caminho UNC." }
+    return "\\$servidor\$share"
+}
+
+function Salvar-ConfigAdminRede {
+    try {
+        [pscustomobject]@{
+            Servidor = $txtSrvDestino.Text.Trim()
+            Compartilhamento = $txtCompartilhamento.Text.Trim()
+        } | ConvertTo-Json | Set-Content -LiteralPath $script:AdminRedeConfigPath -Encoding UTF8
+    } catch { Escrever-LogAdminRede "Aviso: nao foi possivel salvar a configuracao: $($_.Exception.Message)" }
+}
+
+$txtSrvDestino.Add_TextChanged({
+    try { $lblCaminhoUNC.Text = "Caminho UNC: " + (Obter-CaminhoCompartilhamento) }
+    catch { $lblCaminhoUNC.Text = "Caminho UNC: informe hostname/IP e compartilhamento." }
+})
+$txtCompartilhamento.Add_TextChanged({
+    try { $lblCaminhoUNC.Text = "Caminho UNC: " + (Obter-CaminhoCompartilhamento) }
+    catch { $lblCaminhoUNC.Text = "Caminho UNC: informe hostname/IP e compartilhamento." }
+})
+
+$btnResolverServidor.Add_Click({
+    $alvo = $txtSrvDestino.Text.Trim()
+    if ([string]::IsNullOrWhiteSpace($alvo)) { [System.Windows.Forms.MessageBox]::Show("Informe o hostname ou IP do servidor.", "Resolver servidor", "OK", "Warning") | Out-Null; return }
+    try {
+        $ips = @([System.Net.Dns]::GetHostAddresses($alvo) | Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } | ForEach-Object { $_.IPAddressToString } | Select-Object -Unique)
+        if ($ips.Count -eq 0) { throw "Nenhum endereco IPv4 foi retornado para $alvo." }
+        Escrever-LogAdminRede "Resolucao de $alvo -> $($ips -join ', ')"
+        [System.Windows.Forms.MessageBox]::Show("Destino: $alvo`r`nIPv4 resolvidos: $($ips -join ', ')`r`n`r`nO hostname pode continuar sendo usado no caminho UNC, desde que a resolucao funcione nos PDVs.", "Resolver servidor", "OK", "Information") | Out-Null
+    } catch {
+        Escrever-LogAdminRede "Falha ao resolver ${alvo}: $($_.Exception.Message)"
+        [System.Windows.Forms.MessageBox]::Show("Nao foi possivel resolver o destino.`r`n$($_.Exception.Message)", "Resolver servidor", "OK", "Warning") | Out-Null
+    }
+})
+
+$btnTestarPasta.Add_Click({
+    try {
+        $unc = Obter-CaminhoCompartilhamento
+        Escrever-LogAdminRede "Testando compartilhamento $unc"
+        $hostAlvo = $txtSrvDestino.Text.Trim()
+        $tcpOk = $false
+        try { $tcpOk = (Test-NetConnection -ComputerName $hostAlvo -Port 445 -WarningAction SilentlyContinue -InformationLevel Quiet -ErrorAction Stop) } catch { $tcpOk = $false }
+        if ($tcpOk) { Escrever-LogAdminRede "Porta SMB 445 acessivel em $hostAlvo." }
+        else { Escrever-LogAdminRede "Porta SMB 445 nao respondeu. Verifique rede/firewall/servidor." }
+        if (Test-Path -LiteralPath $unc -ErrorAction SilentlyContinue) {
+            Escrever-LogAdminRede "SUCESSO: compartilhamento acessivel com a sessao atual: $unc"
+            [System.Windows.Forms.MessageBox]::Show("O compartilhamento esta acessivel:`r`n$unc", "Reparador de caminho", "OK", "Information") | Out-Null
+        } else {
+            Escrever-LogAdminRede "O caminho nao esta acessivel com as credenciais atuais: $unc"
+            [System.Windows.Forms.MessageBox]::Show("Nao foi possivel acessar $unc com a sessao atual.`r`nSe for necessario, use 'Conectar com credenciais'.", "Reparador de caminho", "OK", "Warning") | Out-Null
+        }
+        Salvar-ConfigAdminRede
+    } catch {
+        Escrever-LogAdminRede "ERRO ao testar compartilhamento: $($_.Exception.Message)"
+        [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, "Reparador de caminho", "OK", "Warning") | Out-Null
+    }
+})
+
+$btnAbrirPasta.Add_Click({
+    try {
+        $unc = Obter-CaminhoCompartilhamento
+        if (-not (Test-Path -LiteralPath $unc -ErrorAction SilentlyContinue)) {
+            [System.Windows.Forms.MessageBox]::Show("O caminho nao respondeu com as credenciais atuais. Tente conectar com credenciais primeiro.", "Reparador de caminho", "OK", "Warning") | Out-Null
+            return
+        }
+        Start-Process -FilePath "explorer.exe" -ArgumentList $unc
+        Escrever-LogAdminRede "Pasta aberta: $unc"
+    } catch { Escrever-LogAdminRede "ERRO ao abrir pasta: $($_.Exception.Message)" }
+})
+
+$btnCopiarUNC.Add_Click({
+    try {
+        $unc = Obter-CaminhoCompartilhamento
+        [System.Windows.Forms.Clipboard]::SetText($unc)
+        Escrever-LogAdminRede "Caminho copiado: $unc"
+    } catch { [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, "Reparador de caminho", "OK", "Warning") | Out-Null }
+})
+
+$btnConectarPasta.Add_Click({
+    try {
+        $unc = Obter-CaminhoCompartilhamento
+        $letra = $txtUnidade.Text.Trim().TrimEnd(':').ToUpper()
+        if ($letra -notmatch '^[A-Z]$') { throw "Informe uma letra de unidade valida, por exemplo Z:." }
+        $drive = "${letra}:"
+        if (Get-PSDrive -Name $letra -ErrorAction SilentlyContinue) {
+            [System.Windows.Forms.MessageBox]::Show("A unidade $drive ja existe nesta sessao. Escolha outra letra ou verifique o mapeamento atual.", "Reparador de caminho", "OK", "Warning") | Out-Null
+            return
+        }
+        $cred = Get-Credential -Message "Informe uma conta autorizada a acessar $unc (ex.: NOMEPC\bituser ou NOMEPC\bitbar)."
+        if ($null -eq $cred) { Escrever-LogAdminRede "Conexao cancelada pelo usuario."; return }
+        New-PSDrive -Name $letra -PSProvider FileSystem -Root $unc -Credential $cred -Persist -Scope Global -ErrorAction Stop | Out-Null
+        Escrever-LogAdminRede "Unidade $drive conectada a $unc. Credenciais mantidas apenas pela sessao do Windows."
+        Salvar-ConfigAdminRede
+        Start-Process -FilePath "explorer.exe" -ArgumentList "$drive\"
+        [System.Windows.Forms.MessageBox]::Show("Conexao criada: $drive -> $unc", "Reparador de caminho", "OK", "Information") | Out-Null
+    } catch {
+        Escrever-LogAdminRede "ERRO ao conectar compartilhamento: $($_.Exception.Message)"
+        [System.Windows.Forms.MessageBox]::Show("Nao foi possivel criar a conexao.`r`n$($_.Exception.Message)`r`n`r`nSe houver uma conexao SMB existente para o mesmo servidor com outro usuario, o Windows pode bloquear credenciais diferentes.", "Reparador de caminho", "OK", "Error") | Out-Null
+    }
+})
+
+$btnTestarWinRM.Add_Click({
+    $alvo = $txtSrvDestino.Text.Trim()
+    if ([string]::IsNullOrWhiteSpace($alvo)) { [System.Windows.Forms.MessageBox]::Show("Informe o hostname/IP do computador remoto.", "PowerShell Remoting", "OK", "Warning") | Out-Null; return }
+    try {
+        Test-WSMan -ComputerName $alvo -ErrorAction Stop | Out-Null
+        Escrever-LogAdminRede "WinRM respondeu em $alvo."
+        [System.Windows.Forms.MessageBox]::Show("WinRM esta respondendo em $alvo. Ja e possivel tentar uma sessao autenticada.", "PowerShell Remoting", "OK", "Information") | Out-Null
+    } catch {
+        Escrever-LogAdminRede "WinRM nao esta disponivel em ${alvo}: $($_.Exception.Message)"
+        [System.Windows.Forms.MessageBox]::Show("WinRM nao respondeu em $alvo.`r`nSe estiver desabilitado, e necessario preparar o destino por um canal administrativo ja disponivel ou executar o comando nele localmente.", "PowerShell Remoting", "OK", "Warning") | Out-Null
+    }
+})
+
+$btnPrepararRemoto.Add_Click({
+    $alvo = $txtSrvDestino.Text.Trim()
+    if ([string]::IsNullOrWhiteSpace($alvo)) { [System.Windows.Forms.MessageBox]::Show("Informe o hostname/IP do computador remoto.", "PowerShell Remoting", "OK", "Warning") | Out-Null; return }
+    $confirm = [System.Windows.Forms.MessageBox]::Show("Isto tentara executar Enable-PSRemoting no computador $alvo usando credenciais administrativas. O WinRM precisa estar acessivel antes desta etapa. Continuar?", "Confirmar preparacao remota", "YesNo", "Warning")
+    if ($confirm -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+    try {
+        $cred = Get-Credential -Message "Credenciais administrativas para $alvo"
+        if ($null -eq $cred) { return }
+        Invoke-Command -ComputerName $alvo -Credential $cred -ScriptBlock {
+            Enable-PSRemoting -Force -ErrorAction Stop
+            [pscustomobject]@{ Computador = $env:COMPUTERNAME; WinRM = (Get-Service WinRM).Status.ToString(); Resultado = 'Enable-PSRemoting executado' }
+        } -ErrorAction Stop | ForEach-Object { Escrever-LogAdminRede "Destino $($_.Computador): $($_.Resultado); WinRM=$($_.WinRM)" }
+        [System.Windows.Forms.MessageBox]::Show("Comando executado no destino. Consulte o log para o resultado.", "PowerShell Remoting", "OK", "Information") | Out-Null
+    } catch {
+        Escrever-LogAdminRede "ERRO ao preparar $alvo remotamente: $($_.Exception.Message)"
+        [System.Windows.Forms.MessageBox]::Show("Nao foi possivel executar a preparacao remota.`r`n$($_.Exception.Message)`r`n`r`nSe o WinRM ainda estiver desabilitado, este comando nao consegue inicializar o primeiro acesso sozinho.", "PowerShell Remoting", "OK", "Error") | Out-Null
+    }
+})
+
+$btnDesligarRemoto.Add_Click({
+    $alvo = $txtSrvDestino.Text.Trim()
+    if ([string]::IsNullOrWhiteSpace($alvo)) {
+        [System.Windows.Forms.MessageBox]::Show("Informe o hostname ou IP do computador que deseja desligar.", "Desligar computador", "OK", "Warning") | Out-Null
+        return
+    }
+    $confirm = [System.Windows.Forms.MessageBox]::Show("Tem certeza que deseja DESLIGAR o computador $alvo? Salve qualquer trabalho aberto antes de continuar.", "Confirmar desligamento remoto", "YesNo", "Warning")
+    if ($confirm -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+    try {
+        $cred = Get-Credential -Message "Informe uma conta administrativa autorizada para $alvo"
+        if ($null -eq $cred) { Escrever-LogAdminRede "Desligamento cancelado: credenciais nao informadas."; return }
+        Escrever-LogAdminRede "Enviando comando de desligamento para $alvo..."
+        Invoke-Command -ComputerName $alvo -Credential $cred -ScriptBlock {
+            & "$env:WINDIR\System32\shutdown.exe" /s /t 10 /c "Desligamento remoto solicitado pelo suporte"
+            if ($LASTEXITCODE -ne 0) { throw "shutdown.exe retornou codigo $LASTEXITCODE" }
+            "Desligamento agendado para daqui a 10 segundos."
+        } -ErrorAction Stop | ForEach-Object { Escrever-LogAdminRede ([string]$_) }
+        Escrever-LogAdminRede "Comando de desligamento enviado para ${alvo}; desligamento agendado para 10 segundos."
+        [System.Windows.Forms.MessageBox]::Show("Desligamento agendado para $alvo em 10 segundos.", "Desligamento remoto", "OK", "Information") | Out-Null
+    } catch {
+        Escrever-LogAdminRede "ERRO ao desligar ${alvo}: $($_.Exception.Message)"
+        [System.Windows.Forms.MessageBox]::Show("Nao foi possivel concluir o desligamento remoto.`r`n$($_.Exception.Message)", "Desligamento remoto", "OK", "Error") | Out-Null
+    }
+})
+
+$btnReiniciarRemoto.Add_Click({
+    $alvo = $txtSrvDestino.Text.Trim()
+    if ([string]::IsNullOrWhiteSpace($alvo)) {
+        [System.Windows.Forms.MessageBox]::Show("Informe o hostname ou IP do computador que deseja reiniciar.", "Reiniciar computador", "OK", "Warning") | Out-Null
+        return
+    }
+    $confirm = [System.Windows.Forms.MessageBox]::Show("Tem certeza que deseja REINICIAR o computador $alvo? O sistema e as sessoes abertas serao interrompidos.", "Confirmar reinicializacao remota", "YesNo", "Warning")
+    if ($confirm -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+    try {
+        $cred = Get-Credential -Message "Informe uma conta administrativa autorizada para $alvo"
+        if ($null -eq $cred) { Escrever-LogAdminRede "Reinicializacao cancelada: credenciais nao informadas."; return }
+        Escrever-LogAdminRede "Enviando comando de reinicializacao para $alvo..."
+        Invoke-Command -ComputerName $alvo -Credential $cred -ScriptBlock {
+            & "$env:WINDIR\System32\shutdown.exe" /r /t 10 /c "Reinicializacao remota solicitada pelo suporte"
+            if ($LASTEXITCODE -ne 0) { throw "shutdown.exe retornou codigo $LASTEXITCODE" }
+            "Reinicializacao agendada para daqui a 10 segundos."
+        } -ErrorAction Stop | ForEach-Object { Escrever-LogAdminRede ([string]$_) }
+        Escrever-LogAdminRede "Comando de reinicializacao enviado para ${alvo}; reinicializacao agendada para 10 segundos."
+        [System.Windows.Forms.MessageBox]::Show("Reinicializacao agendada para $alvo em 10 segundos.", "Reinicializacao remota", "OK", "Information") | Out-Null
+    } catch {
+        Escrever-LogAdminRede "AVISO ao reiniciar ${alvo}: a sessao pode ter sido encerrada pelo proprio reinicio. Detalhe: $($_.Exception.Message)"
+        [System.Windows.Forms.MessageBox]::Show("A conexao pode cair quando o computador inicia o reinicio. Verifique se $alvo esta reiniciando antes de tentar novamente.`r`n`r`nDetalhe: $($_.Exception.Message)", "Reinicializacao remota", "OK", "Warning") | Out-Null
+    }
+})
+
+$btnRenovarIPRemoto.Add_Click({
+    $alvo = $txtSrvDestino.Text.Trim()
+    if ([string]::IsNullOrWhiteSpace($alvo)) {
+        [System.Windows.Forms.MessageBox]::Show("Informe o hostname ou IP do computador que deseja renovar o IP.", "Renovar IP remoto", "OK", "Warning") | Out-Null
+        return
+    }
+    $confirm = [System.Windows.Forms.MessageBox]::Show("O comando ipconfig /release pode interromper a conexao com $alvo e a sessao WinRM pode cair antes da renovacao terminar.`r`n`r`nDeseja continuar?", "Confirmar renovacao de IP", "YesNo", "Warning")
+    if ($confirm -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+    try {
+        $cred = Get-Credential -Message "Informe uma conta administrativa autorizada para $alvo"
+        if ($null -eq $cred) { Escrever-LogAdminRede "Renovacao de IP cancelada: credenciais nao informadas."; return }
+        Escrever-LogAdminRede "Solicitando ipconfig /release e /renew em $alvo..."
+        $resultado = Invoke-Command -ComputerName $alvo -Credential $cred -ScriptBlock {
+            $ipconfig = Join-Path $env:WINDIR 'System32\ipconfig.exe'
+            $saidaRelease = & $ipconfig /release 2>&1 | Out-String
+            Start-Sleep -Seconds 2
+            $saidaRenew = & $ipconfig /renew 2>&1 | Out-String
+            [pscustomobject]@{
+                Computador = $env:COMPUTERNAME
+                Release = $saidaRelease.Trim()
+                Renew = $saidaRenew.Trim()
+            }
+        } -ErrorAction Stop
+        foreach ($item in $resultado) {
+            Escrever-LogAdminRede "Renovacao executada em $($item.Computador)."
+            if ($item.Release) { Escrever-LogAdminRede ("Release: " + (($item.Release -replace '[\r\n]+',' | ').Trim())) }
+            if ($item.Renew) { Escrever-LogAdminRede ("Renew: " + (($item.Renew -replace '[\r\n]+',' | ').Trim())) }
+        }
+        [System.Windows.Forms.MessageBox]::Show("Os comandos de liberacao e renovacao foram executados em $alvo. Confira o log; a renovacao pode levar alguns segundos para restabelecer a rede.", "Renovar IP remoto", "OK", "Information") | Out-Null
+    } catch {
+        Escrever-LogAdminRede "ERRO/CONEXAO INTERROMPIDA durante renovacao de IP em ${alvo}: $($_.Exception.Message)"
+        [System.Windows.Forms.MessageBox]::Show("A sessao remota foi interrompida ou a operacao falhou.`r`nComo o IP foi liberado, aguarde alguns segundos e tente localizar o computador pelo novo IP/hostname antes de repetir.`r`n`r`nDetalhe: $($_.Exception.Message)", "Renovar IP remoto", "OK", "Warning") | Out-Null
+    }
+})
+
+$btnTrustedHost.Add_Click({
+    $alvo = $txtSrvDestino.Text.Trim()
+    if ([string]::IsNullOrWhiteSpace($alvo)) { [System.Windows.Forms.MessageBox]::Show("Informe hostname ou IP do destino.", "TrustedHosts", "OK", "Warning") | Out-Null; return }
+    try {
+        $path = 'WSMan:\localhost\Client\TrustedHosts'
+        $atual = (Get-Item -Path $path -ErrorAction Stop).Value
+        $lista = @($atual -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        if ($lista -notcontains $alvo) { $lista += $alvo }
+        Set-Item -Path $path -Value ($lista -join ',') -Force -ErrorAction Stop
+        Escrever-LogAdminRede "TrustedHosts local atualizado para incluir somente o destino especifico: $alvo"
+        [System.Windows.Forms.MessageBox]::Show("Destino adicionado ao TrustedHosts deste computador:`r`n$alvo`r`n`r`nEsta alteracao e local e pode exigir executar o script como administrador.", "TrustedHosts", "OK", "Information") | Out-Null
+    } catch {
+        Escrever-LogAdminRede "ERRO ao atualizar TrustedHosts: $($_.Exception.Message)"
+        [System.Windows.Forms.MessageBox]::Show("Nao foi possivel atualizar TrustedHosts. Execute como administrador.`r`n$($_.Exception.Message)", "TrustedHosts", "OK", "Error") | Out-Null
+    }
+})
+
+$btnPrepararLocal.Add_Click({
+    $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if (-not $isAdmin) {
+        [System.Windows.Forms.MessageBox]::Show("Execute o MonitorDesligamentos como administrador para habilitar o WinRM neste computador.", "PowerShell Remoting", "OK", "Warning") | Out-Null
+        return
+    }
+    try {
+        Enable-PSRemoting -Force -ErrorAction Stop | Out-Null
+        Escrever-LogAdminRede "Enable-PSRemoting executado neste computador ($env:COMPUTERNAME)."
+        [System.Windows.Forms.MessageBox]::Show("PowerShell Remoting habilitado neste computador.", "PowerShell Remoting", "OK", "Information") | Out-Null
+    } catch {
+        Escrever-LogAdminRede "ERRO ao habilitar WinRM local: $($_.Exception.Message)"
+        [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, "PowerShell Remoting", "OK", "Error") | Out-Null
+    }
+})
+
+$btnCopiarPreparacao.Add_Click({
+    $comando = "Enable-PSRemoting -Force"
+    try {
+        [System.Windows.Forms.Clipboard]::SetText($comando)
+        Escrever-LogAdminRede "Comando copiado. Execute-o em PowerShell elevado no computador que deve receber conexoes remotas: $comando"
+        [System.Windows.Forms.MessageBox]::Show("Comando copiado para a area de transferencia:`r`n`r`n$comando`r`n`r`nExecute no computador de destino em um PowerShell aberto como administrador.", "Preparar destino", "OK", "Information") | Out-Null
+    } catch { Escrever-LogAdminRede "ERRO ao copiar comando: $($_.Exception.Message)" }
+})
+
 # ============================================================
 #  INICIALIZACAO
 # ============================================================
@@ -2900,6 +3618,7 @@ if ($chkAuto.Checked) { $timer.Start() }
 
 $form.Add_FormClosing({
     $timer.Stop()
+    if ($script:RedeTimer) { $script:RedeTimer.Stop(); $script:RedeTimer.Dispose() }
     if ($script:FirebirdSessao) {
         $script:FirebirdSessao.Senha = $null
         $script:FirebirdSessao = $null
