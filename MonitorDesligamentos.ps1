@@ -1,4 +1,5 @@
-﻿
+﻿Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 
 # ============================================================
 #  DICIONARIO DE STATUS CODES (traducao)
